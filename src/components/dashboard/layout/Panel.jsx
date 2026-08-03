@@ -35,6 +35,10 @@ const breadcrumbMap = {
     { label: "Dashboard", path: "/dashboard" },
     { label: "Settings", path: "/dashboard/settings" },
   ],
+    "/dashboard/accesscontrolboard": [
+    { label: "Dashboard", path: "/dashboard" },
+    { label: "Access Control", path: "/dashboard/accesscontrolboard" },
+  ],
 };
 
 export const Panel = () => {

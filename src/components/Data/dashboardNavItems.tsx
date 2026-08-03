@@ -1,4 +1,4 @@
-import * as modules from "../../components/dashboard/modules";
+import * as modules from "../../pages/dashboard/index5";
 
 export type DashboardNavItem = {
   label: string;
@@ -11,7 +11,7 @@ export type DashboardNavItem = {
 
 // Dynamic modules
 const moduleFiles = import.meta.glob(
-  "../../components/dashboard/modules/**/*.jsx",
+  "../../pages/dashboard/**/*.jsx",
   { eager: true }
 );
 
@@ -22,7 +22,7 @@ const moduleNavItems: DashboardNavItem[] = Object.keys(moduleFiles).reduce(
     const folder = parts[parts.length - 2];
     const file = parts[parts.length - 1].replace(".jsx", "");
 
-    // जिन folders को manually handle कर रहे हो उन्हें skip कर दो
+
     const excluded = [
       "StudentRecords",
       "ResumeBuilder",

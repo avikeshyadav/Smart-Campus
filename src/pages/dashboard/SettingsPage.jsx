@@ -5,7 +5,7 @@ const defaultSettings = { faceLogin: true, pinRequired: true, captchaEnabled: tr
 
 const getStoredSettings = () => {
   if (typeof window === "undefined") return defaultSettings;
-  try {
+  try { 
     const saved = localStorage.getItem("dashboard-settings");
     return saved ? JSON.parse(saved) : defaultSettings;
   } catch {

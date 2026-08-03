@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import * as modules from "../../components/dashboard/modules";
+// import * as modules from "./index5";
 import DashboardShell from "./DashboardShell";
 
 const DashboardPage = () => {
@@ -33,7 +33,7 @@ const DashboardPage = () => {
   loadDashboard();
 }, []);
 
-  const componentEntries = Object.entries(modules);
+  // const componentEntries = Object.entries(modules);
 
   return (
     <DashboardShell title="Student Recognition Management">
@@ -90,13 +90,13 @@ const DashboardPage = () => {
               </div>
             </div>
           </div>
-        </section>
-
+        </section> 
+{/*}
         <section className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
           {componentEntries.slice(0, 20).map(([key, Component]) => (
             <Component key={key} />
           ))}
-        </section>
+        </section> */}
       </div>
     </DashboardShell>
   );
