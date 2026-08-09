@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import DashboardShell from "../DashboardShell";
-
+import { useAuth } from "../../../context/AuthContext";
+import {BASE_URI} from "../../../config/api";
 const emptyStudentForm = {
   name: "",
   className: "",
@@ -11,10 +12,27 @@ const emptyStudentForm = {
   guardian: "",
 };
 
-const API_BASE = "http://localhost:5000/api";
 
+const StudentsPage = () => {
+    const {accessToken} = useAuth();
+
+  const [students, setStudents] = useState([]);
+  const [studentForm, setStudentForm] = useState(emptyStudentForm);
+  const [editingId, setEditingId] = useState(null);
+  const [selectedStudentId, setSelectedStudentId] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  
 const fetchStudents = async () => {
-  const response = await fetch(`${API_BASE}/students`);
+
+  const response = await fetch(`${BASE_URI}/students`,
+    {
+      method:"GET",
+      headers:{
+        Authorization: `Bearer ${accessToken}`
+      }
+    }
+  );
   if (!response.ok) {
     throw new Error("Failed to fetch students");
   }
@@ -22,7 +40,7 @@ const fetchStudents = async () => {
 };
 
 const syncStudents = async (value) => {
-  const response = await fetch(`${API_BASE}/students`, {
+  const response = await fetch(`${BASE_URI}/students`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(value),
@@ -31,16 +49,10 @@ const syncStudents = async (value) => {
   if (!response.ok) {
     throw new Error("Failed to sync students");
   }
+console.log(response.json());
 
   return response.json();
 };
-
-const StudentsPage = () => {
-  const [students, setStudents] = useState([]);
-  const [studentForm, setStudentForm] = useState(emptyStudentForm);
-  const [editingId, setEditingId] = useState(null);
-  const [selectedStudentId, setSelectedStudentId] = useState(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const loadStudents = async () => {
@@ -58,6 +70,7 @@ const StudentsPage = () => {
     loadStudents();
   }, []);
 
+  console.log("Students:",students);
   const selectedStudent = students.find((student) => student.id === selectedStudentId) || students[0] || null;
 
   const handleChange = (event) => {
@@ -67,7 +80,7 @@ const StudentsPage = () => {
 
   const resetForm = () => {
     setStudentForm(emptyStudentForm);
-    setEditingId(null);
+    setEditingId(null); 
   };
 
   const handleSubmit = async (event) => {

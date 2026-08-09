@@ -1,6 +1,6 @@
 import { useState } from "react";
 import DashboardShell from "../DashboardShell";
-
+import{BASE_URI} from "../../../config/api";
 const VerifyStudent = () => {
 
   const [image,setImage]=useState(null);
@@ -12,7 +12,7 @@ const VerifyStudent = () => {
 
     formData.append("image",image);
 
-    const res = await fetch("http://127.0.0.1:8000/students/verify",{
+    const res = await fetch(`${BASE_URI}/students/verify`,{
       method:"POST",
       body:formData
     });

@@ -24,7 +24,6 @@ const Topbar = ({ isLoggedIn, onLogin }) => {
                 Home
               </a>
             </li>
-
             <li>
               <a href="#about" className="transition hover:text-cyan-400">
                 About

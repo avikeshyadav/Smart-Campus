@@ -1,13 +1,20 @@
+
 import React from "react";
 import Topbar from "./layouts/Topbar";
 import { Footer } from "./layouts/Footer";
 import HomePage from "../pages/HomePage";
 
-const Main_layout = ({ isLoggedIn, onLogin }) => {
+const Main_layout = ({ isLoggedIn, onLogin, onLogout }) => {
   return (
     <>
-      <Topbar isLoggedIn={isLoggedIn} onLogin={onLogin} />
+      <Topbar
+        isLoggedIn={isLoggedIn}
+        onLogin={onLogin}
+        onLogout={onLogout}
+      />
+
       <HomePage />
+
       <Footer />
     </>
   );

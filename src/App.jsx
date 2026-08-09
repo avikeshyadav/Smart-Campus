@@ -1,25 +1,16 @@
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useAuth } from "./context/AuthContext";
+import { Toaster,toast } from "react-hot-toast";
 
 const Main_layout = lazy(() => import("./components/Main_layout"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
-const DashboardRoutes = lazy(() => import("./pages/dashboard/DashboardRoutes"));
-
-const getCookie = (name) => {
-  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
-  return match ? decodeURIComponent(match[1]) : null;
-};
+const ResetPassword = lazy(() => import("./pages/ForgetPassword"));
+const DashboardRoutes = lazy(() =>import("./pages/dashboard/DashboardRoutes"));
 
 const App = () => {
-  const [isLoggedIn, setIsLoggedIn] = useState(Boolean(getCookie("auth_user")));
-
-  useEffect(() => {
-    setIsLoggedIn(Boolean(getCookie("auth_user")));
-  }, []);
-
-  const handleLogin = (value = true) => {
-    setIsLoggedIn(value);
-  };
+  const { accessToken, logout } = useAuth();
+  const isLoggedIn = Boolean(accessToken);
 
   return (
     <BrowserRouter>
@@ -30,26 +21,23 @@ const App = () => {
           </div>
         }
       >
+     <Toaster
+        position="top-right"
+        reverseOrder={false}
+      />
         <Routes>
-          <Route
-            path="/"
-            element={<Main_layout isLoggedIn={isLoggedIn} onLogin={handleLogin} />}
-          />
-          <Route
-            path="/login"
-            element={
-              isLoggedIn ? (
-                <Navigate to="/dashboard" replace />
-              ) : (
-                <LoginPage onLogin={handleLogin} />
-              )
-            }
-          />
-          <Route path="/dashboard/*" element={<DashboardRoutes />} />
+          {/* Home Layout */}
+          <Route path="/" element={ <Main_layout isLoggedIn={isLoggedIn} onLogout={logout}/> } />
+          {/* Login */}
+          <Route path="/login" element={ isLoggedIn ? <Navigate to="/dashboard"  replace />:<LoginPage />} />
+          {/* Dashboard */}
+          <Route path="/dashboard/*" element={ <DashboardRoutes />} />
+          {/* Forgot Password */}
+          <Route path="/forgetpassword"element={  <ResetPassword />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
   );
 };
 
-export default App;
+export default App; 

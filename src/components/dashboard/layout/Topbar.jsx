@@ -1,138 +1,53 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import Notifications from "./components/Notifications";
+import {useAuth} from '../../../context/AuthContext';
+
 
 import {
   Bell,
   Search,
   User,
   Users,
-  Settings,
+  Settings, 
   LogOut,
   KeyRound,
   ChevronDown,
 } from "lucide-react";
 
 
-const Topbar = ({ title = "Dashboard", onLogout }) => {
+const Topbar =   ({ title = "Dashboard" }) => {
+  const {user,logout} = useAuth();
 
-  const navigate = useNavigate();
   const dropdownRef = useRef(null);
 
   const [openProfile, setOpenProfile] = useState(false);
 
-  const [user, setUser] = useState({
-    name: "Admin User",
-    role: "Super Admin",
-    avatar: "https://i.pravatar.cc/150?img=12",
-  });
-
-
-  // Fetch User From Backend API
-  useEffect(() => {
-
-    const getUser = async () => {
-
-      try {
-
-        const response = await fetch(
-          "http://localhost:5000/api/auth/profile",
-          {
-            credentials: "include",
-          }
-        );
-
-
-        if (response.ok) {
-
-          const data = await response.json();
-
-
-          setUser({
-            name: data.name,
-            role: data.role,
-            avatar:
-              data.profileImage ||
-              "https://i.pravatar.cc/150",
-          });
-
-        }
-
-
-      } catch (error) {
-
-        console.log("User fetch error:", error);
-
-      }
-
-    };
-
-
-    getUser();
-
-  }, []);
-
-
-
 
   // Close Dropdown Outside Click
-  useEffect(() => {
-
-    const handleClickOutside = (event) => {
-
-      if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(event.target)
-      ) {
-
-        setOpenProfile(false);
-
-      }
-
-    };
-
-
-    document.addEventListener(
-      "mousedown",
-      handleClickOutside
-    );
-
-
-    return () => {
-
-      document.removeEventListener(
-        "mousedown",
-        handleClickOutside
-      );
-
-    };
-
-
-  }, []);
-
-
-
-
-
-  const handleLogout = () => {
-
-    if (onLogout) {
-
-      onLogout();
-
-      return;
-
+useEffect(() => {
+  const handleClickOutside = (e) => {
+    if (
+      dropdownRef.current &&
+      !dropdownRef.current.contains(e.target)
+    ) {
+      setOpenProfile(false);
     }
 
-
-    document.cookie =
-      "auth_user=; path=/; max-age=0";
-
-
-    navigate("/login");
-
+    // if (
+    //   notificationRef.current &&
+    //   !notificationRef.current.contains(e.target)
+    // ) {
+    //   setOpenNotification(false);
+    // }
   };
 
+  document.addEventListener("mousedown", handleClickOutside);
 
+  return () => {
+    document.removeEventListener("mousedown", handleClickOutside);
+  };
+}, []);
 
 
 
@@ -140,32 +55,32 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
 
     <header
       className="
-        sticky top-0 z-40
-        flex items-center justify-between
-        border-b border-slate-800
-        bg-slate-950/95
-        px-6 py-4
-        backdrop-blur
+    fixed
+    left-[260px]
+    right-0
+    top-0
+    z-40
+    flex
+    h-[72px]
+    items-center
+    justify-between
+    border-b
+    border-slate-800
+    bg-slate-950/95
+    px-6
+    py-2
+    backdrop-blur-xl
       "
     >
-
-
       {/* LEFT SECTION */}
 
       <div>
 
         <p
           className="
-            text-xs
-            uppercase
-            tracking-[0.3em]
-            text-cyan-400
-          "
-        >
+            text-xs  uppercase  tracking-[0.3em]  text-cyan-400">
           Facial Recognition Console
         </p>
-
-
         <h1
           className="
             mt-1
@@ -179,12 +94,7 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
 
       </div>
 
-
-
-
-
       {/* SEARCH SECTION */}
-
       <div
         className="
           relative
@@ -193,7 +103,6 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
           md:flex
         "
       >
-
         <Search
           size={18}
           className="
@@ -203,8 +112,6 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
             text-slate-500
           "
         />
-
-
         <input
           type="text"
           placeholder="Search students..."
@@ -224,13 +131,7 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
 
       </div>
 
-
-
-
-
-
       {/* RIGHT SECTION */}
-
       <div
         className="
           flex
@@ -238,11 +139,9 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
           gap-3
         "
       >
-
-
         {/* Notification */}
 
-        <button
+        {/* <button
           className="
             relative
             rounded-xl
@@ -254,10 +153,7 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
             hover:text-cyan-400
           "
         >
-
           <Bell size={20} />
-
-
           <span
             className="
               absolute
@@ -276,15 +172,9 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
           >
             3
           </span>
+        </button> */}
 
-
-        </button>
-
-
-
-
-
-
+        <Notifications />
 
         {/* USER PROFILE */}
 
@@ -292,27 +182,12 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
           ref={dropdownRef}
           className="relative"
         >
-
-
           <button
             onClick={() => setOpenProfile(!openProfile)}
-            className="
-              flex
-              items-center
-              gap-3
-              rounded-xl
-              border border-slate-700
-              bg-slate-900
-              px-3
-              py-2
-              transition
-              hover:border-cyan-500
-            "
+            className=" flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 transition hover:border-cyan-500"
           >
-
-
             <img
-              src={user.avatar}
+              src={user?.dp || "/uploads/users/avikesh.jpg" }
               alt="profile"
               className="
                 h-10
@@ -321,8 +196,6 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
                 object-cover
               "
             />
-
-
             <div
               className="
                 hidden
@@ -338,7 +211,7 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
                   text-white
                 "
               >
-                {user.name}
+                {user?.name}
               </p>
 
 
@@ -348,7 +221,7 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
                   text-slate-400
                 "
               >
-                {user.role}
+                {user?.role}
               </p>
 
 
@@ -361,10 +234,9 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
               className={`
                 text-slate-400
                 transition
-                ${
-                  openProfile
-                    ? "rotate-180"
-                    : ""
+                ${openProfile
+                  ? "rotate-180"
+                  : ""
                 }
               `}
             />
@@ -397,7 +269,7 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
 
 
               <Link
-                to="/profile"
+                to="/dashboard/profile"
                 className="
                   flex
                   items-center
@@ -511,7 +383,7 @@ const Topbar = ({ title = "Dashboard", onLogout }) => {
 
 
               <button
-                onClick={handleLogout}
+                onClick={logout}
                 className="
                   flex
                   w-full
