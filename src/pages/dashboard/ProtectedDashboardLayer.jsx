@@ -27,9 +27,7 @@ const ProtectedDashboardLayer = () => {
       if (refreshStarted.current) {
         return;
       }
-
       refreshStarted.current = true;
-
       try {
         const newToken = await tryRefresh()
         if (!cancelled) {
@@ -46,9 +44,7 @@ const ProtectedDashboardLayer = () => {
         }
       }
     };
-
     checkAuthentication();
-
     return () => {
       cancelled = true;
     };

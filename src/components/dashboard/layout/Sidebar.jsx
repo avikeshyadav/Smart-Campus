@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
@@ -6,94 +5,17 @@ import { BASE_URI } from "../../../config/api";
 import SidebarMobile from "./SidebarMobile";
 
 import {
-  Settings,
-  UserCog,
-  ShieldCheck,
-  Bell,
-  LockKeyhole,
-  Palette,
-  Database,
-  Home,
-  Users,
-  User,
-  GraduationCap,
-  BookOpen,
-  FileText,
-  Calendar,
-  BarChart3,
-  LayoutDashboard,
-  CreditCard,
-  ShoppingCart,
-  Package,
-  ClipboardList,
-  MessageSquare,
-  Mail,
-  Phone,
-  Camera,
-  Image,
-  Video,
-  MapPin,
-  Globe,
-  Server,
-  Code,
-  Folder,
-  FolderOpen,
-  Key,
-  Shield,
-  Cpu,
-  Wifi,
-  Search,
-  Menu,
-  Layers,
-  Monitor,
+  Settings,UserCog,ShieldCheck,  Bell,  LockKeyhole,  Palette,  Database,  Home,  Users,User,GraduationCap,
+  BookOpen,FileText,Calendar,BarChart3,LayoutDashboard,CreditCard,ShoppingCart,Package,ClipboardList,MessageSquare,
+  Mail,Phone,Camera,  Image,  Video,  MapPin,  Globe,  Server,  Code,  Folder,  FolderOpen,Key,Shield,Cpu,
+    Wifi,  Search,  Menu,  Layers, Monitor,
 } from "lucide-react";
 
 const iconMap = {
-  Settings,
-  UserCog,
-  ShieldCheck,
-  Bell,
-  LockKeyhole,
-  Palette,
-  Database,
-
-  Home,
-  Users,
-  User,
-  GraduationCap,
-  BookOpen,
-  FileText,
-  Calendar,
-
-  BarChart3,
-  LayoutDashboard,
-
-  CreditCard,
-  ShoppingCart,
-  Package,
-  ClipboardList,
-
-  MessageSquare,
-  Mail,
-  Phone,
-
-  Camera,
-  Image,
-  Video,
-
-  MapPin,
-  Globe,
-
-  Server,
-  Code,
-
-  Folder,
-  FolderOpen,
-  Key,
-  Shield,
-  Cpu,
-  Wifi,
-  Search,
+  Settings,  UserCog,  ShieldCheck,  Bell,  LockKeyhole,  Palette,  Database,Home,Users,User,
+  GraduationCap,  BookOpen,  FileText,  Calendar,BarChart3,
+  LayoutDashboard,  CreditCard,  ShoppingCart,  Package,  ClipboardList,  MessageSquare,  Mail,  Phone, Camera,
+  Image,  Video,  MapPin,  Globe,  Server,  Code,  Folder,  FolderOpen,  Key,  Shield,  Cpu,  Wifi,Search,
   Menu,
   Layers,
   Monitor,
@@ -112,7 +34,7 @@ const colors = [
   "text-emerald-500",
 ];
 
-// Stable color based on item id/name
+/* Stable color based on item id/name */
 const getIconColor = (value = "") => {
   let hash = 0;
 
@@ -123,6 +45,20 @@ const getIconColor = (value = "") => {
   return colors[Math.abs(hash) % colors.length];
 };
 
+const isFlagOn = (value, defaultValue = true) => {
+  if (value === undefined || value === null) {
+    return defaultValue;
+  }
+
+  if (typeof value === "string") {
+    return !["0", "false", "no", "off"].includes(
+      value.trim().toLowerCase()
+    );
+  }
+
+  return Boolean(value);
+};
+
 const Sidebar = () => {
   const { accessToken } = useAuth();
   const location = useLocation();
@@ -130,21 +66,50 @@ const Sidebar = () => {
   const [openGroup, setOpenGroup] = useState("");
   const [dashboardNavItems, setDashboardNavItems] = useState([]);
 
+  const getDashboardPath = (path = "") => {
+    if (!path) {
+      return "/dashboard";
+    }
 
+    if (path.startsWith("/dashboard")) {
+      return path;
+    }
 
-  const isActive = (path) =>
-    path === "/dashboard"
-      ? location.pathname === path
-      : location.pathname === path ||
-        location.pathname.startsWith(`${path}/`);
-  const toggleGroup = (label) => {
-   setOpenGroup((prev) => (prev === label ? "" : label));
+    return `/dashboard/${path.replace(/^\/+/, "")}`;
   };
+
+  const isRouteActive = (path) => {
+    const dashboardPath = getDashboardPath(path);
+
+    if (dashboardPath === "/dashboard") {
+      return location.pathname === "/dashboard";
+    }
+
+    return (
+      location.pathname === dashboardPath ||
+      location.pathname.startsWith(`${dashboardPath}/`)
+    );
+  };
+
+  const toggleGroup = (label, active) => {
+    // Inactive module ko open nahi karna
+    if (!active) {
+      return;
+    }
+
+    setOpenGroup((prev) => (prev === label ? "" : label));
+  };
+
   /*
-   * Fetch dashboard modules
-   */
+  |--------------------------------------------------------------------------
+  | FETCH MODULES
+  |--------------------------------------------------------------------------
+  */
   useEffect(() => {
-    if (!accessToken) return;
+    if (!accessToken) {
+      setDashboardNavItems([]);
+      return;
+    }
 
     fetch(`${BASE_URI}/api/dashboard/modules`, {
       method: "GET",
@@ -152,50 +117,121 @@ const Sidebar = () => {
         Authorization: `Bearer ${accessToken}`,
       },
     })
-      .then((res) => res.json())
+      .then((res) => {
+        if (!res.ok) {
+          throw new Error("Failed to load dashboard modules");
+        }
+
+        return res.json();
+      })
       .then((data) => {
-        setDashboardNavItems(data.data || []);
+        const modules = Array.isArray(data?.data)
+          ? data.data
+          : [];
+
+        setDashboardNavItems(modules);
+
+        console.log("Dashboard modules:", modules);
       })
       .catch((err) => {
-        console.log(err);
+        console.log("Dashboard modules error:", err);
         setDashboardNavItems([]);
       });
   }, [accessToken]);
 
+  /*
+  |--------------------------------------------------------------------------
+  | AUTO OPEN ACTIVE GROUP
+  |--------------------------------------------------------------------------
+  */
+  useEffect(() => {
+    const activeGroup = dashboardNavItems.find((item) => {
+      const visible = isFlagOn(item?.is_visible, true);
+      const active = isFlagOn(item?.is_active, true);
+
+      if (!visible || !active) {
+        return false;
+      }
+
+      return item.children?.some((child) => {
+        const childVisible = isFlagOn(
+          child?.is_visible,
+          true
+        );
+
+        const childActive = isFlagOn(
+          child?.is_active,
+          true
+        );
+
+        return (
+          childVisible &&
+          childActive &&
+          isRouteActive(child.path)
+        );
+      });
+    });
+
+    if (activeGroup) {
+      setOpenGroup(activeGroup.label);
+    }
+  }, [location.pathname, dashboardNavItems]);
 
   return (
     <>
-
       {/* =====================================================
-          SIDEBAR
+          DESKTOP SIDEBAR
       ====================================================== */}
-
       <aside
-    className="
-    fixed
-    left-0
-    top-0
-    z-50
-    hidden
-    h-screen
-    w-[260px]
-    flex-col
-    overflow-hidden
-    border-r
-    border-slate-800
-    bg-slate-950
-    shadow-2xl
-    lg:flex
-  "
->
+        className="
+          fixed
+          left-0
+          top-0
+          z-50
+          hidden
+          h-screen
+          w-[260px]
+          flex-col
+          overflow-hidden
+          border-r
+          border-slate-800
+          bg-slate-950
+          shadow-2xl
+          lg:flex
+        "
+      >
         {/* =====================================================
             HEADER
         ====================================================== */}
-
-        <div className=" flex h-20 shrink-0 items-center justify-between border-b border-slate-700 bg-slate-950 px-4 ">
+        <div
+          className="
+            flex
+            h-20
+            shrink-0
+            items-center
+            justify-between
+            border-b
+            border-slate-700
+            bg-slate-950
+            px-4
+          "
+        >
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl shadow-lg">
+              {/* Logo */}
+              <div
+                className="
+                  flex
+                  h-12
+                  w-12
+                  shrink-0
+                  items-center
+                  justify-center
+                  overflow-hidden
+                  rounded-xl
+                  shadow-lg
+                "
+              >
                 <img
                   src="/media/collegePic/logo.jpeg"
                   alt="Logo"
@@ -203,51 +239,138 @@ const Sidebar = () => {
                 />
               </div>
 
+              {/* Title */}
               <div className="min-w-0">
-                <p className="text-xs uppercase tracking-[0.35em] text-cyan-400">
+                <p
+                  className="
+                    text-xs
+                    uppercase
+                    tracking-[0.35em]
+                    text-cyan-400
+                  "
+                >
                   Dashboard
                 </p>
 
-                <h2 className="mt-1 truncate text-xl font-bold text-white">
+                <h2
+                  className="
+                    mt-1
+                    truncate
+                    text-xl
+                    font-bold
+                    text-white
+                  "
+                >
                   Student Vision
                 </h2>
+                
               </div>
             </div>
-
-            {/* Mobile Close Button */}
-
           </div>
         </div>
 
         {/* =====================================================
             NAVIGATION
         ====================================================== */}
-
-        <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3 py-4">
+        <div
+          className="
+            custom-scrollbar
+            min-h-0
+            flex-1
+            overflow-y-auto
+            px-3
+            py-4
+          "
+        >
           <nav className="space-y-2">
             {dashboardNavItems.map((item) => {
-              const Icon = item.icon ? iconMap[item.icon] : null;
+              /*
+              |--------------------------------------------------------------------------
+              | VISIBILITY + ACTIVE STATUS
+              |--------------------------------------------------------------------------
+              */
+              const itemVisible = isFlagOn(
+                item?.is_visible,
+                true
+              );
+
+              const itemActive = isFlagOn(
+                item?.is_active,
+                true
+              );
+
+              /*
+              |--------------------------------------------------------------------------
+              | is_visible = 0
+              | Module completely hide
+              |--------------------------------------------------------------------------
+              */
+              if (!itemVisible) {
+                return null;
+              }
+
+              const Icon = item.icon
+                ? iconMap[item.icon]
+                : null;
+
+              /*
+              |--------------------------------------------------------------------------
+              | Parent active only when module itself is active
+              |--------------------------------------------------------------------------
+              */
+              const childHasActiveRoute =
+                item.children?.some((child) => {
+                  const childVisible = isFlagOn(
+                    child?.is_visible,
+                    true
+                  );
+
+                  const childActive = isFlagOn(
+                    child?.is_active,
+                    true
+                  );
+
+                  return (
+                    childVisible &&
+                    childActive &&
+                    isRouteActive(child.path)
+                  );
+                });
 
               const active =
-                (item.path && isActive(item.path)) ||
-                item.children?.some(
-                  (child) => location.pathname === child.path
-                );
+                itemActive &&
+                ((item.path && isRouteActive(item.path)) ||
+                  childHasActiveRoute);
 
+              /*
+              |--------------------------------------------------------------------------
+              | Inactive parent cannot be opened
+              |--------------------------------------------------------------------------
+              */
               const showSubItems =
-                item.children?.length &&
+                Boolean(item.children?.length) &&
+                itemActive &&
                 openGroup === item.label;
 
               return (
-                <div key={item.id}>
+                <div
+                  key={item.id}
+                  className={!itemActive ? "opacity-50" : ""}
+                >
                   {/* =================================================
-                      PARENT ITEM
+                      PARENT ITEM WITH CHILDREN
                   ================================================== */}
-
                   {item.children?.length ? (
                     <button
                       type="button"
-                      onClick={() => toggleGroup(item.label)}
+                      disabled={!itemActive}
+                      onClick={() =>
+                        toggleGroup(
+                          item.label,
+                          itemActive
+                        )
+                      }
+                      aria-disabled={!itemActive}
                       className={`
                         group
                         flex
@@ -264,27 +387,61 @@ const Sidebar = () => {
                         duration-300
 
                         ${
-                          active
-                            ? "border-green-500 bg-cyan-500/10 text-cyan-400"
+                          !itemActive
+                            ? "cursor-not-allowed border-transparent text-slate-600"
+                            : active
+                            ? "border-cyan-500 bg-cyan-500/10 text-cyan-400"
                             : "border-transparent text-slate-300 hover:border-cyan-500 hover:bg-slate-900 hover:text-cyan-400"
                         }
                       `}
                     >
-                      <div className="flex min-w-0 items-center gap-3">
+                      <div
+                        className="
+                          flex
+                          min-w-0
+                          items-center
+                          gap-3
+                        "
+                      >
                         {Icon && (
                           <Icon
                             size={20}
-                            className={getIconColor(
-                              `${item.id}-${item.label}`
-                            )}
+                            className={
+                              !itemActive
+                                ? "text-slate-700"
+                                : getIconColor(
+                                    `${item.id}-${item.label}`
+                                  )
+                            }
                           />
                         )}
 
                         <span className="truncate">
                           {item.label}
                         </span>
+
+                        {/* Disabled badge */}
+                        {!itemActive && (
+                          <span
+                            className="
+                              rounded-md
+                              border
+                              border-slate-700
+                              bg-slate-900
+                              px-1.5
+                              py-0.5
+                              text-[8px]
+                              uppercase
+                              tracking-wider
+                              text-slate-600
+                            "
+                          >
+                            Disabled
+                          </span>
+                        )}
                       </div>
 
+                      {/* Arrow */}
                       <svg
                         className={`
                           h-4
@@ -293,7 +450,11 @@ const Sidebar = () => {
                           transition-transform
                           duration-300
 
-                          ${showSubItems ? "rotate-180" : ""}
+                          ${
+                            showSubItems
+                              ? "rotate-180"
+                              : ""
+                          }
                         `}
                         fill="none"
                         stroke="currentColor"
@@ -312,47 +473,99 @@ const Sidebar = () => {
                        SINGLE LINK
                     ================================================== */
 
-                    <Link
-                      to={item.path}
-                      className={`
-                        flex
-                        items-center
-                        gap-3
-                        rounded-xl
-                        border
-                        px-4
-                        py-3
-                        text-sm
-                        font-medium
-                        transition-all
-                        duration-300
+                    itemActive ? (
+                      <Link
+                        to={getDashboardPath(item.path)}
+                        className={`
+                          flex
+                          items-center
+                          gap-3
+                          rounded-xl
+                          border
+                          px-4
+                          py-3
+                          text-sm
+                          font-medium
+                          transition-all
+                          duration-300
 
-                        ${
-                          active
-                            ? "border-cyan-500 bg-cyan-500/10 text-cyan-400"
-                            : "border-transparent text-slate-300 hover:border-cyan-500 hover:bg-slate-900 hover:text-cyan-400"
-                        }
-                      `}
-                    >
-                      {Icon && (
-                        <Icon
-                          size={20}
-                          className={getIconColor(
-                            `${item.id}-${item.label}`
-                          )}
-                        />
-                      )}
+                          ${
+                            active
+                              ? "border-cyan-500 bg-cyan-500/10 text-cyan-400"
+                              : "border-transparent text-slate-300 hover:border-cyan-500 hover:bg-slate-900 hover:text-cyan-400"
+                          }
+                        `}
+                      >
+                        {Icon && (
+                          <Icon
+                            size={20}
+                            className={getIconColor(
+                              `${item.id}-${item.label}`
+                            )}
+                          />
+                        )}
 
-                      <span className="truncate">
-                        {item.label}
-                      </span>
-                    </Link>
+                        <span className="truncate">
+                          {item.label}
+                        </span>
+                      </Link>
+                    ) : (
+                      /* =================================================
+                         INACTIVE SINGLE MODULE
+                         Link ki jagah disabled div
+                      ================================================== */
+                      <div
+                        aria-disabled="true"
+                        className="
+                          flex
+                          cursor-not-allowed
+                          items-center
+                          gap-3
+                          rounded-xl
+                          border
+                          border-transparent
+                          px-4
+                          py-3
+                          text-sm
+                          font-medium
+                          text-slate-600
+                        "
+                      >
+                        {Icon && (
+                          <Icon
+                            size={20}
+                            className="text-slate-700"
+                          />
+                        )}
+
+                        <span className="truncate">
+                          {item.label}
+                        </span>
+
+                        <span
+                          className="
+                            ml-auto
+                            rounded-md
+                            border
+                            border-slate-700
+                            bg-slate-900
+                            px-1.5
+                            py-0.5
+                            text-[8px]
+                            uppercase
+                            tracking-wider
+                            text-slate-600
+                          "
+                        >
+                          Disabled
+                        </span>
+                      </div>
+                    )
                   )}
 
                   {/* =================================================
                       DROPDOWN CHILDREN
                   ================================================== */}
-
                   <div
                     className={`
                       overflow-hidden
@@ -361,54 +574,148 @@ const Sidebar = () => {
 
                       ${
                         showSubItems
-                          ? "mt-2 max-h-96"
+                          ? "mt-2 max-h-[600px]"
                           : "max-h-0"
                       }
                     `}
                   >
-                    <div className="ml-4 border-l border-slate-700 pl-4">
+                    <div
+                      className="
+                        ml-4
+                        border-l
+                        border-slate-700
+                        pl-4
+                      "
+                    >
                       {item.children?.map((subItem) => {
+                        /*
+                        |--------------------------------------------------------------------------
+                        | CHILD FLAGS
+                        |--------------------------------------------------------------------------
+                        */
+                        const childVisible = isFlagOn(
+                          subItem?.is_visible,
+                          true
+                        );
+
+                        const childActive = isFlagOn(
+                          subItem?.is_active,
+                          true
+                        );
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | is_visible = 0
+                        | Child completely hide
+                        |--------------------------------------------------------------------------
+                        */
+                        if (!childVisible) {
+                          return null;
+                        }
+
                         const ChildIcon =
-                          iconMap[subItem.icon] || Settings;
+                          iconMap[subItem.icon] ||
+                          Settings;
 
                         const subActive =
-                          location.pathname === subItem.path;
+                          childActive &&
+                          isRouteActive(subItem.path);
 
+                        /*
+                        |--------------------------------------------------------------------------
+                        | ACTIVE CHILD
+                        |--------------------------------------------------------------------------
+                        */
+                        if (childActive) {
+                          return (
+                            <Link
+                              key={subItem.id}
+                              to={getDashboardPath(
+                                subItem.path
+                              )}
+                              className={`
+                                group
+                                mt-1
+                                flex
+                                items-center
+                                gap-3
+                                rounded-lg
+                                px-3
+                                py-2
+                                text-sm
+                                transition-all
+                                duration-300
+
+                                ${
+                                  subActive
+                                    ? "bg-cyan-500/15 font-medium text-cyan-400"
+                                    : "text-slate-400 hover:bg-slate-900 hover:text-cyan-400"
+                                }
+                              `}
+                            >
+                              <ChildIcon
+                                size={16}
+                                className={getIconColor(
+                                  `${subItem.id}-${subItem.label}`
+                                )}
+                              />
+
+                              <span className="truncate">
+                                {subItem.label}
+                              </span>
+                            </Link>
+                          );
+                        }
+
+                        /*
+                        |--------------------------------------------------------------------------
+                        | INACTIVE CHILD
+                        | Click completely disabled
+                        |--------------------------------------------------------------------------
+                        */
                         return (
-                          <Link
+                          <div
                             key={subItem.id}
-                            to={subItem.path}
-                            className={`
+                            aria-disabled="true"
+                            className="
                               group
                               mt-1
                               flex
+                              cursor-not-allowed
                               items-center
                               gap-3
                               rounded-lg
                               px-3
                               py-2
                               text-sm
-                              transition-all
-                              duration-300
-
-                              ${
-                                subActive
-                                  ? "bg-cyan-500/15 font-medium text-cyan-400"
-                                  : "text-slate-400 hover:bg-slate-900 hover:text-cyan-400"
-                              }
-                            `}
+                              text-slate-700
+                            "
                           >
                             <ChildIcon
                               size={16}
-                              className={getIconColor(
-                                `${subItem.id}-${subItem.label}`
-                              )}
+                              className="text-slate-800"
                             />
 
                             <span className="truncate">
                               {subItem.label}
                             </span>
-                          </Link>
+
+                            <span
+                              className="
+                                ml-auto
+                                rounded
+                                border
+                                border-slate-800
+                                px-1
+                                py-0.5
+                                text-[7px]
+                                uppercase
+                                text-slate-700
+                              "
+                            >
+                              Off
+                            </span>
+                          </div>
                         );
                       })}
                     </div>
@@ -419,8 +726,15 @@ const Sidebar = () => {
           </nav>
         </div>
       </aside>
+
+      {/* =====================================================
+          MOBILE SIDEBAR
+
+          IMPORTANT:
+          SidebarMobile agar modules khud API se render karta hai,
+          to usme bhi is_active / is_visible ka same logic lagana hoga.
+      ====================================================== */}
       <SidebarMobile />
-      
     </>
   );
 };

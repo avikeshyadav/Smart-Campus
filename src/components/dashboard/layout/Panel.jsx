@@ -40,8 +40,8 @@ export const Panel = () => {
           );
         })}
       </nav>
-
       <div className="text-sm font-semibold text-white">
+        
         {breadcrumbs.at(-1)?.label}
       </div>
     </div>

@@ -3,46 +3,236 @@ from urllib.parse import quote_plus
 
 import sqlalchemy as sa
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+
+# =========================================================
+# DATABASE CONFIG
+# =========================================================
+
 password = quote_plus("Avik@123")
 
 # DATABASE_URL = "sqlite:///./face_register.db"
-DATABASE_URL = f"mysql+pymysql://root:{password}@localhost:3306/mydb"
-# connect_args={"check_same_thread": False}
-engine = sa.create_engine(DATABASE_URL, )
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+DATABASE_URL = (
+    f"mysql+pymysql://root:{password}"
+    f"@localhost:3306/mydb"
+)
+
+engine = sa.create_engine(
+    DATABASE_URL,
+    connect_args={
+        "init_command": "SET time_zone = '+05:30'"
+    }
+)
+
+SessionLocal = sessionmaker(
+    autocommit=False,
+    autoflush=False,
+    bind=engine,
+)
+
 Base = declarative_base()
 
-print(Base)
+
+# =========================================================
+# INDIA TIME
+# =========================================================
+
+def india_now():
+    return datetime.datetime.now(
+        datetime.timezone(
+            datetime.timedelta(
+                hours=5,
+                minutes=30,
+            )
+        )
+    ).replace(
+        tzinfo=None
+    )
+
+
+# =========================================================
+# STUDENT
+# =========================================================
+
 class Student(Base):
+
     __tablename__ = "students"
 
-    # id = sa.Column(sa.String, primary_key=True, autoincrement=True)  # e.g. "STU-10245"
-    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    student_id = sa.Column(sa.String, unique=True, nullable=False)
-    name = sa.Column(sa.String, nullable=False)
-    class_name = sa.Column(sa.String, nullable=False)
-    photo_path = sa.Column(sa.String, nullable=False)
-    encoding = sa.Column(sa.Text, nullable=False)  # JSON-encoded 128-d face vector
-    status = sa.Column(sa.String, default="Active")
-    created_at = sa.Column(sa.DateTime, default=datetime.datetime.utcnow)
+    id = sa.Column(
+        sa.Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
 
+    student_id = sa.Column(
+        sa.String,
+        unique=True,
+        nullable=False,
+    )
+
+    name = sa.Column(
+        sa.String,
+        nullable=False,
+    )
+
+    course = sa.Column(
+        sa.String,
+        nullable=False,
+    )
+
+    photo_path = sa.Column(
+        sa.String,
+        nullable=False,
+    )
+
+    encoding = sa.Column(
+        sa.Text,
+        nullable=False,
+    )
+
+    status = sa.Column(
+        sa.String,
+        default="InActive",
+    )
+
+    created_at = sa.Column(
+        sa.DateTime,
+        default=india_now,
+    )
+
+
+# =========================================================
+# ATTENDANCE
+# =========================================================
 
 class Attendance(Base):
+
     __tablename__ = "attendance"
 
-    id = sa.Column(sa.Integer, primary_key=True, autoincrement=True)
-    student_id = sa.Column(sa.String, sa.ForeignKey("students.id"), nullable=False)
-    date = sa.Column(sa.Date, default=datetime.date.today)
-    marked_at = sa.Column(sa.DateTime, default=datetime.datetime.utcnow)
-    confidence = sa.Column(sa.Float)
+    id = sa.Column(
+        sa.Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    student_id = sa.Column(
+        sa.String,
+        sa.ForeignKey("students.id"),
+        nullable=False,
+    )
+
+    date = sa.Column(
+        sa.Date,
+        default=datetime.date.today,
+    )
+
+    marked_at = sa.Column(
+        sa.DateTime,
+        default=india_now,
+    )
+
+    confidence = sa.Column(
+        sa.Float,
+    )
 
 
-Base.metadata.create_all(bind=engine)
+# =========================================================
+# NOTIFICATIONS
+# =========================================================
 
+# =========================================================
+# NOTIFICATIONS
+# =========================================================
+
+class Notification(Base):
+
+    __tablename__ = "notifications"
+
+    id = sa.Column(
+        sa.Integer,
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    user_id = sa.Column(
+        sa.Integer,
+        nullable=False,
+        index=True,
+    )
+
+    type = sa.Column(
+        sa.String(100),
+        nullable=False,
+    )
+
+    title = sa.Column(
+        sa.String(255),
+        nullable=False,
+    )
+
+    message = sa.Column(
+        sa.Text,
+        nullable=False,
+    )
+
+    entity_type = sa.Column(
+        sa.String(100),
+        nullable=True,
+    )
+
+    entity_id = sa.Column(
+        sa.Integer,
+        nullable=True,
+    )
+
+    # Python attribute:
+    # notification_metadata
+    #
+    # MySQL column:
+    # metadata
+    notification_metadata = sa.Column(
+        "metadata",
+        sa.JSON,
+        nullable=True,
+    )
+
+    is_read = sa.Column(
+        sa.Boolean,
+        default=False,
+        nullable=False,
+    )
+
+    created_at = sa.Column(
+        sa.DateTime,
+        default=india_now,
+        nullable=False,
+    )
+
+    expires_at = sa.Column(
+        sa.DateTime,
+        nullable=False,
+    )
+
+# =========================================================
+# CREATE TABLES
+# =========================================================
+
+Base.metadata.create_all(
+    bind=engine
+)
+
+
+# =========================================================
+# DATABASE SESSION
+# =========================================================
 
 def get_db():
+
     db = SessionLocal()
+
     try:
         yield db
+
     finally:
         db.close()

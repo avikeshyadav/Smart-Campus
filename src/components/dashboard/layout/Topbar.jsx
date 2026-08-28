@@ -2,10 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import Notifications from "./components/Notifications";
 import {useAuth} from '../../../context/AuthContext';
-
-
 import {
-  Bell,
   Search,
   User,
   Users,
@@ -14,8 +11,6 @@ import {
   KeyRound,
   ChevronDown,
 } from "lucide-react";
-
-
 const Topbar =   ({ title = "Dashboard" }) => {
   const {user,logout} = useAuth();
 
@@ -34,22 +29,12 @@ useEffect(() => {
       setOpenProfile(false);
     }
 
-    // if (
-    //   notificationRef.current &&
-    //   !notificationRef.current.contains(e.target)
-    // ) {
-    //   setOpenNotification(false);
-    // }
   };
-
   document.addEventListener("mousedown", handleClickOutside);
-
   return () => {
     document.removeEventListener("mousedown", handleClickOutside);
   };
 }, []);
-
-
 
   return (
 
@@ -78,16 +63,11 @@ useEffect(() => {
 
         <p
           className="
-            text-xs  uppercase  tracking-[0.3em]  text-cyan-400">
+            text-xs  uppercase  tracking-[0.3em]  text-cyan-400 relative hidden w-80 md:flex">
           Facial Recognition Console
         </p>
         <h1
-          className="
-            mt-1
-            text-xl
-            font-bold
-            text-white
-          "
+          className=" mt-1  text-xl  font-bold  text-white  relative hidden w-80 md:flex"
         >
           {title}
         </h1>
@@ -139,45 +119,12 @@ useEffect(() => {
           gap-3
         "
       >
-        {/* Notification */}
 
-        {/* <button
-          className="
-            relative
-            rounded-xl
-            border border-slate-700
-            p-2.5
-            text-slate-300
-            transition
-            hover:border-cyan-500
-            hover:text-cyan-400
-          "
-        >
-          <Bell size={20} />
-          <span
-            className="
-              absolute
-              -right-1
-              -top-1
-              flex
-              h-5
-              w-5
-              items-center
-              justify-center
-              rounded-full
-              bg-rose-500
-              text-[10px]
-              text-white
-            "
-          >
-            3
-          </span>
-        </button> */}
 
         <Notifications />
 
         {/* USER PROFILE */}
-
+ 
         <div
           ref={dropdownRef}
           className="relative"
@@ -187,7 +134,7 @@ useEffect(() => {
             className=" flex items-center gap-3 rounded-xl border border-slate-700 bg-slate-900 px-3 py-2 transition hover:border-cyan-500"
           >
             <img
-              src={user?.dp || "/uploads/users/avikesh.jpg" }
+              src={user?.avatar_url || "" }
               alt="profile"
               className="
                 h-10
@@ -203,7 +150,6 @@ useEffect(() => {
                 sm:block
               "
             >
-
               <p
                 className="
                   text-sm
@@ -223,12 +169,7 @@ useEffect(() => {
               >
                 {user?.role}
               </p>
-
-
             </div>
-
-
-
             <ChevronDown
               size={18}
               className={`
@@ -243,11 +184,6 @@ useEffect(() => {
 
 
           </button>
-
-
-
-
-
 
           {/* DROPDOWN MENU */}
 
@@ -266,8 +202,6 @@ useEffect(() => {
                 shadow-2xl
               "
             >
-
-
               <Link
                 to="/dashboard/profile"
                 className="
@@ -283,16 +217,8 @@ useEffect(() => {
                   hover:text-cyan-400
                 "
               >
-
-                <User size={17} />
-
-                My Profile
-
+                <User size={17} />My Profile
               </Link>
-
-
-
-
               <Link
                 to="/dashboard/users"
                 className="
@@ -308,17 +234,8 @@ useEffect(() => {
                   hover:text-cyan-400
                 "
               >
-
-                <Users size={17} />
-
-                Manage Users
-
+                <Users size={17} />Manage Users
               </Link>
-
-
-
-
-
               <Link
                 to="/dashboard/settings"
                 className="
@@ -334,19 +251,13 @@ useEffect(() => {
                   hover:text-cyan-400
                 "
               >
-
                 <Settings size={17} />
 
                 Settings
 
               </Link>
-
-
-
-
-
               <Link
-                to="/change-password"
+                to="/dashboard/profile"
                 className="
                   flex
                   items-center
@@ -360,66 +271,25 @@ useEffect(() => {
                   hover:text-cyan-400
                 "
               >
-
-                <KeyRound size={17} />
-
-                Change Password
-
+                <KeyRound size={17} />Change Password
               </Link>
-
-
-
-
-
               <hr
                 className="
                   my-2
                   border-slate-800
                 "
               />
-
-
-
-
-
               <button
                 onClick={logout}
-                className="
-                  flex
-                  w-full
-                  items-center
-                  gap-3
-                  rounded-lg
-                  px-3
-                  py-2
-                  text-sm
-                  text-rose-400
-                  hover:bg-rose-500/10
-                "
+                className=" flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm text-rose-400 hover:bg-rose-500/10 "
               >
-
-                <LogOut size={17} />
-
-                Logout
-
+             <LogOut size={17} /> Logout
               </button>
-
-
-
             </div>
-
           )}
-
-
-
         </div>
-
-
       </div>
-
-
     </header>
-
   );
 
 };

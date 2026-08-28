@@ -1,6 +1,10 @@
 fastapi
-uvicorn[standard]
+uvicorn
 sqlalchemy
-face_recognition
-numpy
+pymysql
 python-multipart
+face_recognition
+git+https://github.com/ageitgey/face_recognition_models
+setuptools<81
+ultralytics
+pillow

@@ -1,23 +1,18 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import {BASE_URI} from "../config/api";
+import { toast } from "react-hot-toast";
 
 const ForgotPassword = () => {
 
   const [email, setEmail] = useState("");
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-
-    setError("");
-    setMessage("");
-
     try {
 
       const response = await fetch(
-        `${BASE_URI}/forgetpassword`,
+        `${BASE_URI}/api/forgetpassword`,
         {
           method:"POST",
           headers:{
@@ -32,12 +27,12 @@ const ForgotPassword = () => {
 
       const data = await response.json();
       if(!response.ok){
-        setError(data.message);
+        toast.error(data.message);
         return;
       }
-      setMessage(data.message);
+      toast.success(data.message);
     } catch(err){
-      setError("Server error");
+      toast.error("Server error");
     }
 
   };
@@ -65,19 +60,6 @@ const ForgotPassword = () => {
             onChange={(e)=>setEmail(e.target.value)}
             className="w-full rounded-lg bg-slate-800 px-4 py-3"
           />
-
-
-          {
-            error &&
-            <p className="text-red-400">{error}</p>
-          }
-
-
-          {
-            message &&
-            <p className="text-green-400">{message}</p>
-          }
-
 
           <button
             className="w-full rounded-full bg-cyan-500 py-3"

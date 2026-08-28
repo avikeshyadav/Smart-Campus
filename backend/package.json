@@ -17,6 +17,9 @@
     "helmet": "^8.3.0",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^9.0.4",
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "qrcode": "^1.5.4",
+    "speakeasy": "^2.0.0",
+    "sqlalchemy": "^10.1.1"
   }
 }

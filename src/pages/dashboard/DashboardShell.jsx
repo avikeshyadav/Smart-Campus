@@ -1,10 +1,7 @@
 import DashboardLayout from "../../components/dashboard/layout/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
 import { useNavigate } from "react-router-dom";
-
-
 const DashboardShell = ({ title, children }) => {
-
   const { logout } = useAuth();
   const navigate = useNavigate();
 
@@ -25,7 +22,7 @@ const DashboardShell = ({ title, children }) => {
     >
       {children}
     </DashboardLayout>
-  );
+  ); 
 };
 
 
