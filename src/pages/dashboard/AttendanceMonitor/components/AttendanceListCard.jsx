@@ -13,7 +13,7 @@ export default function AttendanceListCard({
   paginatedAttendance,
   search,
   setSearch,
-  loading,
+  loading, 
   refreshAttendance,
   currentPage,
   totalPages,

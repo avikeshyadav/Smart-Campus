@@ -1,22 +1,41 @@
-const rateLimit = require('express-rate-limit');
-// Login/register endpoints ke liye strict limiter - brute force attacks rokta hai
+const rateLimit = require("express-rate-limit");
+
 const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 10, // is window me max 10 requests per IP
-  standardHeaders: true,
+  windowMs: 5 * 60 * 1000,
+  max: 20,
+  standardHeaders: "draft-8",
   legacyHeaders: false,
+
   message: {
     success: false,
-    message: 'multiple Attempt found. Please Try after 15 min.',
+    code: "RATE_LIMITED",
+    message: "Too many attempts. Please try again later.",
+  },
+
+  handler: (req, res,next) => {
+    return res.status(429).json({
+      success: false,
+      code: "RATE_LIMITED",
+      message: "Too many requests. Please try again later.",
+    });
   },
 });
 
-// General API limiter - overall abuse rokta hai
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 100,
-  standardHeaders: true,
+  max: 5000,
+
+  standardHeaders: "draft-8",
   legacyHeaders: false,
+
+  message: {
+    success: false,
+    code: "RATE_LIMITED",
+    message: "Too many requests. Please try again later.",
+  },
 });
 
-module.exports = { authLimiter, generalLimiter };
+module.exports = {
+  authLimiter,
+  generalLimiter,
+};

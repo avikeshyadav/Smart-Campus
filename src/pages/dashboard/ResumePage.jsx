@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { jsPDF } from "jspdf";
-import DashboardShell from "./DashboardShell";
 
 const STORAGE_KEY = "dashboard-resume";
 const defaultResume = {
@@ -336,7 +335,6 @@ const ResumePage = () => {
   };
 
   return (
-    <DashboardShell title="Resume Builder">
       <div className="space-y-6">
         <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-6">
           <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -636,7 +634,6 @@ const ResumePage = () => {
           </div>
         </section>
       </div>
-    </DashboardShell>
   );
 };
 

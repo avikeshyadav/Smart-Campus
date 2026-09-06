@@ -6,7 +6,7 @@ const SALT_ROUNDS = parseInt(process.env.BCRYPT_SALT_ROUNDS || '12', 10);
 
 // Password ko bcrypt se hash karo (salted, adaptive hashing)
 async function hashPassword(plainPassword) { 
-  return bcrypt.hash(plainPassword, 10);
+  return bcrypt.hash(plainPassword, 10); 
 } 
 
 // Plain password ko stored hash ke against verify karo

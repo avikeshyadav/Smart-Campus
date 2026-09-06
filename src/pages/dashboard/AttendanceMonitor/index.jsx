@@ -7,7 +7,6 @@ import React, {
 
 import { toast } from "react-hot-toast";
 import { useAuth } from "../../../context/AuthContext";
-import DashboardShell from "../DashboardShell";
 
 import PageHeader from "./components/PageHeader";
 import StatsGrid from "./components/StatsGrid";
@@ -365,7 +364,7 @@ export default function AttendanceMonitor() {
   // =========================================================
 
   return (
-    <DashboardShell>
+    <>
 
       <div className="min-h-screen bg-slate-950 text-slate-200">
 
@@ -465,6 +464,6 @@ export default function AttendanceMonitor() {
 
       </div>
 
-    </DashboardShell>
+    </>
   );
 }

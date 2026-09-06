@@ -126,44 +126,75 @@ async function getAttendance(req, res) {
     // 6. ATTENDANCE STUDENT DETAILS
     // =================================================
 
-    const [attendanceStudents] =
-      await db.promise().query(
-        `
-        SELECT
-          s.id,
-          s.name,
-          s.student_id,
-          s.mobile,
-          s.email,
-          s.course,
-          s.department,
-          s.year,
-          s.gender,
-          s.status,
-          s.semester,
-          s.dob,
-          s.photo_path,
-          a.id AS attendance_id,
-          a.student_id AS attendance_student_id,
-          a.date,
-          a.marked_at,
-          a.confidence
+const [attendanceStudents] =
+  await db.promise().query(
+    `
+    SELECT
+      s.id,
+      s.name,
+      s.student_id,
+      s.mobile,
+      s.email,
+      s.course,
+      s.department,
+      s.year,
+      s.gender,
+      s.status,
+      s.semester,
+      s.dob,
+      s.photo_path,
 
-        FROM attendance a
+      a.id AS attendance_id,
+      a.student_id AS attendance_student_id,
+      a.date,
+      a.marked_at,
+      a.confidence,
 
-        INNER JOIN students s
-          ON s.id = a.student_id
+      CASE
+        WHEN a.id IS NULL THEN 'Absent'
+        ELSE 'Present'
+      END AS attendance_status
 
-        WHERE LOWER(
-          COALESCE(s.status, 'Active')
-        ) = 'active'
+    FROM students s
 
-        ${dateCondition}
+    LEFT JOIN attendance a
+      ON a.student_id = s.id
 
-        ORDER BY a.marked_at DESC
-        `,
-        dateParams
-      );
+      ${
+        date
+          ? `AND DATE(a.marked_at) = ?`
+          : period === "Today"
+          ? `AND DATE(a.marked_at) = CURDATE()`
+          : period === "This Week"
+          ? `
+              AND YEARWEEK(a.marked_at, 1) =
+                  YEARWEEK(CURDATE(), 1)
+            `
+          : period === "This Month"
+          ? `
+              AND YEAR(a.marked_at) = YEAR(CURDATE())
+              AND MONTH(a.marked_at) = MONTH(CURDATE())
+            `
+          : period === "This Semester"
+          ? `
+              AND YEAR(a.marked_at) = YEAR(CURDATE())
+            `
+          : ""
+      }
+
+    WHERE LOWER(
+      COALESCE(s.status, 'Active')
+    ) = 'active'
+
+    ORDER BY
+      CASE
+        WHEN a.id IS NULL THEN 1
+        ELSE 0
+      END,
+      s.name ASC
+    `,
+    dateParams
+  );
 
     // =================================================
     // 7. DEPARTMENT PERFORMANCE

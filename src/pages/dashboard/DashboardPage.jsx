@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
-
 import { BASE_URI } from "../../config/api";
-import DashboardShell from "./DashboardShell";
 import { useAuth } from "../../context/AuthContext";
-
 import MainCameraComponent from "../dashboard/DashboardModule/MainCameraComponent";
-import StudentLiveTracking from "../dashboard/DashboardModule/StudentLiveTracking";
+import QuickActtion from "../dashboard/DashboardModule/QuickAction";
+import SystemOverview from "../dashboard/DeviceHealthPanel/SystemOverview";
+import Alert_Notifications from "../dashboard/DashboardModule/Alert_Notifications";
 
 const DashboardPage = () => {
   const { accessToken } = useAuth();
@@ -18,9 +17,7 @@ const DashboardPage = () => {
     alerts: 0,
   });
 
-  // Same data goes to both components
-  const [trackedStudent, setTrackedStudent] =
-    useState(null);
+  const [trackedStudent, setTrackedStudent] = useState(null);
 
   useEffect(() => {
     if (!accessToken) return;
@@ -39,9 +36,7 @@ const DashboardPage = () => {
         );
 
         if (!response.ok) {
-          throw new Error(
-            `Server error: ${response.status}`
-          );
+          throw new Error(`Server error: ${response.status}`);
         }
 
         const data = await response.json();
@@ -50,12 +45,13 @@ const DashboardPage = () => {
 
         setSummary((prev) => ({
           ...prev,
-          totalStudents: Number(data?.total || 0),
+          totalStudents: Number(data?.totalStudents || 0),
+          activeToday: Number(data?.todayAttendance || 0),
         }));
       } catch (error) {
         if (!cancelled) {
           console.error(error);
-          toast.error("Unable to load students");
+          toast.error("Unable to load dashboard data");
         }
       }
     };
@@ -69,9 +65,9 @@ const DashboardPage = () => {
 
   /*
    * Camera se jab student milega,
-   * sirf yahi state update hogi.
+   * sirf tracking state update hogi.
    *
-   * NO ATTENDANCE.
+   * Attendance count backend se aayega.
    */
   const handleStudentTracked = (student) => {
     if (!student?.student_id) return;
@@ -80,70 +76,56 @@ const DashboardPage = () => {
 
     setSummary((prev) => ({
       ...prev,
-      activeToday: 1,
       verifiedMatches: prev.verifiedMatches + 1,
     }));
   };
 
   return (
-    <DashboardShell title="Student Recognition Management">
+    <div className="space-y-2">
 
-      <div className="space-y-2">
+      {/* SUMMARY */}
 
-        {/* SUMMARY */}
+      <section className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <Stat
+          label="Total Students"
+          value={summary.totalStudents}
+        />
 
-        <section className="grid grid-cols-2 gap-2 md:grid-cols-4">
+        <Stat
+          label="Total Attendance Today"
+          value={summary.activeToday}
+        />
 
-          <Stat
-            label="Total Students"
-            value={summary.totalStudents}
+        <Stat
+          label="Recognition Matches"
+          value={summary.verifiedMatches}
+        />
+
+        <Stat
+          label="Alerts"
+          value={summary.alerts}
+        />
+      </section>
+
+      {/* TRACKING */}
+
+      <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+        <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+          <MainCameraComponent
+            accessToken={accessToken}
+            baseUri={BASE_URI}
+            trackedStudent={trackedStudent}
+            onStudentTracked={handleStudentTracked}
           />
 
-          <Stat
-            label="Currently Tracked"
-            value={
-              trackedStudent ? 1 : 0
-            }
-          />
+          <Alert_Notifications />
+        </div>
 
-          <Stat
-            label="Recognition Matches"
-            value={summary.verifiedMatches}
-          />
+        <SystemOverview />
+        <QuickActtion />
+      </section>
 
-          <Stat
-            label="Alerts"
-            value={summary.alerts}
-          />
-
-        </section>
-
-        {/* TRACKING */}
-
-        <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
-
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
-
-            <MainCameraComponent
-              accessToken={accessToken}
-              baseUri={BASE_URI}
-              trackedStudent={trackedStudent}
-              onStudentTracked={
-                handleStudentTracked
-              }
-            />
-
-            <StudentLiveTracking
-              student={trackedStudent}
-            />
-
-          </div>
-
-        </section>
-
-      </div>
-
-    </DashboardShell>
+    </div>
   );
 };
 

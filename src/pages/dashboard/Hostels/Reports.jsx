@@ -1,0 +1,12 @@
+import React from "react";
+import { BarChart3, Download, Users, BedDouble, Building2 } from "lucide-react";
+
+const floors=[["Ground Floor",84],["1st Floor",91],["2nd Floor",78],["3rd Floor",88]];
+
+export default function Reports(){
+ return <section className="p-6"><div className="flex justify-between items-start"><div><h2 className="text-2xl font-bold">Hostel Analytics & Reports</h2><p className="text-sm text-slate-500 mt-1">Occupancy and room management insights.</p></div><button className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-700"><Download size={16}/> Export Report</button></div>
+ <div className="grid md:grid-cols-4 gap-3 mt-5">{[["Total Rooms","90",Building2],["Total Beds","270",BedDouble],["Residents","248",Users],["Occupancy Rate","91.9%",BarChart3]].map(([a,b,I])=><div className="p-4 rounded-xl border border-slate-800 bg-[#071022]" key={a}><I className="text-cyan-300"/><div className="text-xs text-slate-500 mt-2">{a}</div><div className="text-2xl font-bold">{b}</div></div>)}</div>
+ <div className="mt-5 rounded-xl border border-slate-800 bg-[#071022] p-5"><h3 className="font-bold">Floor Wise Occupancy</h3><div className="mt-6 space-y-5">{floors.map(([name,val])=><div key={name}><div className="flex justify-between text-sm mb-2"><span>{name}</span><span className="text-slate-400">{val}%</span></div><div className="h-3 rounded-full bg-slate-800 overflow-hidden"><div style={{width:`${val}%`}} className="h-full bg-cyan-400 rounded-full"/></div></div>)}</div></div>
+ <div className="grid md:grid-cols-2 gap-4 mt-4"><div className="p-5 rounded-xl border border-slate-800 bg-[#071022]"><h3 className="font-bold">Room Status</h3><div className="grid grid-cols-3 gap-3 mt-5 text-center"><div><div className="text-2xl font-bold text-emerald-400">72</div><div className="text-xs text-slate-500">Full</div></div><div><div className="text-2xl font-bold text-amber-400">16</div><div className="text-xs text-slate-500">Partial</div></div><div><div className="text-2xl font-bold text-red-400">2</div><div className="text-xs text-slate-500">Empty</div></div></div></div><div className="p-5 rounded-xl border border-slate-800 bg-[#071022]"><h3 className="font-bold">Quick Reports</h3><div className="space-y-2 mt-4">{["Floor Occupancy Report","Vacant Beds Report","Resident Allocation Report","Room Change Report"].map(x=><button className="w-full text-left p-3 rounded-lg bg-slate-800/60 hover:bg-slate-800 text-sm" key={x}>{x}</button>)}</div></div></div>
+ </section>
+}

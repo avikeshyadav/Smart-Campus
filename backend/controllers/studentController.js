@@ -360,15 +360,33 @@ async function getStudentById(req, res) {
 }
 
 // =====================================================
-// GET STUDENTS COUNT
+// GET STUDENTS + TODAY ATTENDANCE COUNT
 // GET /api/students/count
 // =====================================================
 async function countStudents(req, res) {
-  db.query(
-    "SELECT COUNT(*) AS total FROM students",
-    (err, result) => {
+  const studentsQuery = "SELECT COUNT(*) AS total FROM students";
+
+  const attendanceQuery = `
+    SELECT COUNT(*) AS total
+    FROM attendance
+    WHERE date >= CURDATE()
+      AND date < CURDATE() + INTERVAL 1 DAY
+  `;
+
+  db.query(studentsQuery, (err, studentResult) => {
+    if (err) {
+      console.error("Count students error:", err);
+
+      return res.status(500).json({
+        success: false,
+        message: "Database Error Detected",
+        error: err.message,
+      });
+    }
+
+    db.query(attendanceQuery, (err, attendanceResult) => {
       if (err) {
-        console.error("Count students error:", err);
+        console.error("Count attendance error:", err);
 
         return res.status(500).json({
           success: false,
@@ -379,12 +397,101 @@ async function countStudents(req, res) {
 
       return res.status(200).json({
         success: true,
-        total: result[0].total,
+        totalStudents: studentResult[0].total,
+        todayAttendance: attendanceResult[0].total,
       });
-    }
-  );
+    });
+  });
 }
 
+// =====================================================
+// SEARCH STUDENTS
+// GET /api/students/search?q=
+// Search by: Name, Student ID / Roll No, Email
+// =====================================================
+async function searchStudents(req, res) {
+  try {
+    const { q = "" } = req.query;
+
+    const searchValue = String(q).trim();
+
+    // -----------------------------------------------
+    // Minimum search length
+    // -----------------------------------------------
+    if (searchValue.length < 2) {
+      return res.status(200).json({
+        success: true,
+        students: [],
+      });
+    }
+
+    const search = `%${searchValue}%`;
+
+    const sql = `
+      SELECT
+        id,
+        student_id,
+        name,
+        email,
+        mobile AS phone,
+        department,
+        course,
+        year,
+        semester,
+        photo_path,
+        gender,
+        dob,
+        status,
+        admission_date
+      FROM students
+      WHERE
+        name LIKE ?
+        OR student_id LIKE ?
+        OR email LIKE ?
+      ORDER BY name ASC
+      LIMIT 10
+    `;
+
+    db.query(
+      sql,
+      [
+        search,
+        search,
+        search,
+      ],
+      (err, result) => {
+        if (err) {
+          console.error(
+            "Search students error:",
+            err
+          );
+
+          return res.status(500).json({
+            success: false,
+            message: "Failed to search students",
+            error: err.message,
+          });
+        }
+
+        return res.status(200).json({
+          success: true,
+          students: result,
+        });
+      }
+    );
+  } catch (error) {
+    console.error(
+      "Search students exception:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error",
+      error: error.message,
+    });
+  }
+};
 // =====================================================
 // ADD STUDENT
 // POST /api/students
@@ -1053,6 +1160,7 @@ async function deleteStudent(req, res) {
 // =====================================================
 module.exports = {
   viewStudents,
+  searchStudents,
   getStudentById,
   countStudents,
   addStudent,

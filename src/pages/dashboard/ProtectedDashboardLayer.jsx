@@ -4,12 +4,9 @@ import { useEffect, useRef, useState } from "react";
 
 const ProtectedDashboardLayer = () => {
   const { accessToken, tryRefresh } = useAuth();
-
   const [checkingAuth, setCheckingAuth] = useState(true);
-
   // Prevent duplicate refresh calls
   const refreshStarted = useRef(false);
-
   useEffect(() => {
     let cancelled = false;
 
@@ -63,7 +60,6 @@ const ProtectedDashboardLayer = () => {
   if (!accessToken) {
     return <Navigate to="/login" replace />;
   }
-
   // Authenticated
   return <Outlet />;
 };

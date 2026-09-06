@@ -31,11 +31,31 @@ export default function StudentDetailsCard({
   handleSubmit,
   resetForm,
 }) {
+  const courses = [
+    "BBA",
+    "BCA",
+    "B.Tech",
+    "BA LLB",
+    "B.Com",
+    "B.Sc",
+    "BA",
+    "B.Ed",
+    "MBA",
+    "MCA",
+    "M.Tech",
+    "LLB",
+    "LLM",
+    "PhD",
+    "Other",
+  ];
+
   return (
-    <section className="
-      rounded-xl border border-slate-800/90
-      bg-slate-900/55 p-3
-    ">
+    <section
+      className="
+        rounded-xl border border-slate-800/90
+        bg-slate-900/55 p-3
+      "
+    >
       <div className="mb-3 flex items-start justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -44,6 +64,7 @@ export default function StudentDetailsCard({
               Student Details
             </h2>
           </div>
+
           <p className="mt-1 text-[7px] uppercase tracking-wider text-slate-600">
             Enrollment Information
           </p>
@@ -66,11 +87,13 @@ export default function StudentDetailsCard({
         />
 
         {duplicateStudent && (
-          <div className="
-            flex items-center gap-2 rounded-lg border
-            border-red-400/20 bg-red-400/5 px-2.5 py-2
-            text-[8px] text-red-300
-          ">
+          <div
+            className="
+              flex items-center gap-2 rounded-lg border
+              border-red-400/20 bg-red-400/5 px-2.5 py-2
+              text-[8px] text-red-300
+            "
+          >
             <AlertTriangle className="h-3 w-3" />
             Student ID already exists
           </div>
@@ -80,29 +103,61 @@ export default function StudentDetailsCard({
           label="Full Name"
           value={name}
           onChange={setName}
-          placeholder="Rahul Sharma"
+          placeholder="Full Name : Avikesh Kumar Yadav"
           icon={UserCheck}
         />
 
-        <Field
-          label="Class / Section"
-          value={className}
-          onChange={setClassName}
-          placeholder="BCA - 2A"
-          icon={FileCheck2}
-        />
+        {/* COURSE / CLASS SELECT */}
+        <div className="space-y-1.5">
+          <label className="flex items-center gap-1.5 text-[8px] font-medium uppercase tracking-wider text-slate-500">
+            <FileCheck2 className="h-3 w-3 text-purple-400" />
+            Course / Class
+          </label>
+
+          <select
+            value={className}
+            onChange={(e) => setClassName(e.target.value)}
+            className="
+              w-full rounded-lg border border-slate-800
+              bg-slate-950/60 px-3 py-2.5
+              text-[9px] text-slate-200
+              outline-none transition
+              focus:border-purple-400/40
+              focus:ring-1 focus:ring-purple-400/20
+            "
+          >
+            <option value="" className="bg-slate-900 text-slate-500">
+              Select Course / Class
+            </option>
+
+            {courses.map((course) => (
+              <option
+                key={course}
+                value={course}
+                className="bg-slate-900 text-slate-200"
+              >
+                {course}
+              </option>
+            ))}
+          </select>
+        </div>
 
         {/* CHECKLIST */}
-        <div className="
-          rounded-xl border border-slate-800/80
-          bg-slate-950/30 p-3
-        ">
+        <div
+          className="
+            rounded-xl border border-slate-800/80
+            bg-slate-950/30 p-3
+          "
+        >
           <div className="mb-2 flex items-center justify-between">
-            <span className="
-              text-[7px] uppercase tracking-wider text-slate-600
-            ">
+            <span
+              className="
+                text-[7px] uppercase tracking-wider text-slate-600
+              "
+            >
               Enrollment Checklist
             </span>
+
             <Gauge className="h-3 w-3 text-slate-600" />
           </div>
 
@@ -141,7 +196,11 @@ export default function StudentDetailsCard({
           whileHover={{ y: formReady ? -1 : 0 }}
           whileTap={{ scale: formReady ? 0.98 : 1 }}
           type="submit"
-          disabled={status === "submitting" || !formReady || duplicateStudent}
+          disabled={
+            status === "submitting" ||
+            !formReady ||
+            duplicateStudent
+          }
           className="
             flex w-full items-center justify-center gap-2
             rounded-lg border border-emerald-400/20
@@ -219,6 +278,7 @@ export default function StudentDetailsCard({
                   <p className="text-[9px] font-semibold text-emerald-400">
                     Enrollment Successful
                   </p>
+
                   <p className="mt-0.5 text-[7px] text-slate-500">
                     {message}
                   </p>

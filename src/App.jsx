@@ -9,9 +9,10 @@ const ResetPassword = lazy(() => import("./pages/ForgetPassword"));
 const DashboardRoutes = lazy(() =>import("./pages/dashboard/DashboardRoutes"));
 const StudentDashboard = lazy(()=> import("./pages/Student/StudentDashboard"));
 const StudentLogin = lazy(()=> import("./pages/Student/Studentlogin"));
+const GenerateMember = lazy(()=> import("./pages/GenerateMember"));
 
 const App = () => {
-  const { accessToken, isLoading , logout} = useAuth();
+  const { accessToken, isLoading } = useAuth();
   const isLoggedIn = Boolean(accessToken);
     if (isLoading) {
     return (
@@ -34,12 +35,13 @@ const App = () => {
         reverseOrder={false}
       />
         <Routes>
-          <Route path="/" element={ <Main_layout isLoggedIn={isLoggedIn} onLogout={logout} /> } />
+          <Route path="/" element={ <Main_layout /> } />
           <Route path="/login" element={ isLoggedIn ? <Navigate to="/dashboard"  replace />:<LoginPage />} />
           <Route path="/dashboard/*" element={ <DashboardRoutes />} />
           <Route path="/forgetpassword"element={  <ResetPassword />} />
           <Route path="/student/login" element={<StudentLogin />} />
           <Route path="/student/" element={ <StudentDashboard />} />
+          <Route path="/addMember/" element={ <GenerateMember />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

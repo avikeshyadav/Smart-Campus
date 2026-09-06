@@ -36,7 +36,7 @@ const UserSection = () => {
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
               <p className="text-sm text-slate-400">Email</p>
-              <p className="mt-2 font-semibold text-white">admin@portfolio.com</p>
+              <p className="mt-2 font-semibold text-white">avikesh@admin.com</p>
             </div>
             <div className="rounded-xl border border-slate-800 bg-slate-950/70 p-4">
               <p className="text-sm text-slate-400">Role</p>

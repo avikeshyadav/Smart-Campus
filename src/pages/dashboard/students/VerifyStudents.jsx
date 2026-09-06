@@ -1,5 +1,4 @@
 import { useState } from "react";
-import DashboardShell from "../DashboardShell";
 import{BASE_URI} from "../../../config/api";
 const VerifyStudent = () => {
 
@@ -24,7 +23,7 @@ const VerifyStudent = () => {
   };
 
   return (
-    <DashboardShell title="Verify Student">
+<>
     <div className="p-6 rounded-xl bg-slate-900 text-white">
 
       <h2 className="text-2xl mb-5">
@@ -76,7 +75,7 @@ const VerifyStudent = () => {
       )}
 
     </div>
-    </DashboardShell>
+    </>
 
   );
 

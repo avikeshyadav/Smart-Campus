@@ -1,6 +1,7 @@
 import {
   Activity, CheckCircle2, Clock3, RotateCcw, ScanFace,
   ShieldCheck, UserRound, Users, Camera, Search,
+  HomeIcon,
 } from "lucide-react";
 import { Detail } from "./UIHelpers";
 
@@ -52,21 +53,27 @@ export default function StudentResultCard({
               <div className="space-y-5">
 
                 {/* VERIFIED */}
-
                 <div className="relative overflow-hidden rounded-2xl border border-emerald-500/20 bg-gradient-to-br from-emerald-500/10 to-slate-950 p-4">
-
+                {student?.status === "active" ?(
                   <div className="absolute right-3 top-3">
-
                     <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400">
-
                       <CheckCircle2 size={12} />
-
-                      VERIFIED
-
+                      Active
                     </div>
-
+                  </div>) :(
+                  <div className="absolute right-3 top-3">
+                    <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-red-500/10 px-2.5 py-1 text-[10px] font-bold text-red-400">
+                      <CheckCircle2 size={12} />
+                      {student?.status.toUpperCase()}
+                    </div>
                   </div>
-
+                  )}
+                  <div className="absolute right-3 top-22">
+                    <div className="flex items-center gap-1.5 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400">
+                      <CheckCircle2 size={12} />
+                      VERIFIED
+                    </div>
+                  </div>
                   <div className="flex items-center gap-4">
 
                     {student.image ? (
@@ -155,30 +162,50 @@ export default function StudentResultCard({
                 {/* DETAILS */}
 
                 <div className="space-y-1">
-
                   <Detail
                     icon={Users}
                     title="Class"
                     value={student.class}
                   />
-
                   <Detail
                     icon={ShieldCheck}
                     title="Status"
                     value={student.status}
                   />
-
                   <Detail
                     icon={ScanFace}
                     title="Face Accuracy"
                     value={student.accuracy}
                   />
-
                 </div>
 
-                {/* ATTENDANCE LOG */}
+                {/* Hostel Information */}
+                    {student.hostel ? (
+                      
+                <div className="space-y-1">
+                  <Detail
+                    icon={ShieldCheck}
+                    title="Hostel"
+                    value={student?.hostel.hostel_name}
+                  />
+                  <Detail
+                    icon={ShieldCheck}
+                    title="Status"
+                    value={student?.hostel.allocation_status}
+                  />
+                  <Detail
+                    icon={ScanFace}
+                    title="Floor"
+                    value={student?.hostel.floor_name}
+                  />           
+                  <Detail
+                    icon={ScanFace}
+                    title="Room"
+                    value={student?.hostel.room_number}
+                  />
+                </div>
 
-
+                    ) : (<div></div> )}
                 {/* TIME */}
 
                 <div className="flex items-center justify-between border-t border-slate-800 pt-4 text-[10px]">
@@ -196,27 +223,20 @@ export default function StudentResultCard({
               </div>
             ) : (
               <div className="flex min-h-[430px] flex-col items-center justify-center rounded-2xl border border-dashed border-slate-700 bg-slate-950/40 px-6 text-center">
-
                 <div className="mb-5 flex h-20 w-20 items-center justify-center rounded-full border border-slate-700 bg-slate-900 text-slate-600">
-
                   <UserRound size={35} />
-
                 </div>
-
                 <h3 className="font-semibold text-slate-300">
                   No Student Detected
                 </h3>
-
                 <p className="mt-2 max-w-xs text-xs leading-5 text-slate-600">
                   Start the camera and position the student's face
                   inside the detection frame.
                 </p>
-
                 <button
                   onClick={cameraOn ? searchFace : startCamera}
                   className="mt-5 flex items-center gap-2 rounded-xl bg-cyan-500 px-4 py-2.5 text-xs font-bold text-slate-950 transition hover:bg-cyan-400"
                 >
-
                   {cameraOn ? (
                     <>
                       <Search size={15} />

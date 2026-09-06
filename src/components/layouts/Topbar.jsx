@@ -5,13 +5,13 @@ import {} from "../../context/AuthContext";
 
 const navItems = [
   { name: "Home", href: "#home" },
-  { name: "About", href: "#about" },
-  { name: "Services", href: "#services" },
   { name: "Products", href: "#products" },
+  { name: "Services", href: "#services" },
+  { name: "About", href: "#about" },
   { name: "Contact", href: "#contact" },
 ];
 
-const Topbar = ({ isLoggedIn ,onLogout}) => {
+const Topbar = () => {
   const navigate = useNavigate(); 
   const location = useLocation();
 
@@ -106,7 +106,7 @@ const Topbar = ({ isLoggedIn ,onLogout}) => {
                 group-hover:scale-105
               "
             >
-              P
+              <img src="../../../favicon/favicon.png" alt="Logo"></img>
             </div>
 
             <div className="hidden sm:block">
@@ -166,47 +166,6 @@ const Topbar = ({ isLoggedIn ,onLogout}) => {
               Desktop Auth
           ========================= */}
           <div className="hidden items-center gap-3 md:flex">
-            {isLoggedIn ? (
-              <>
-                <Link
-                  to="/dashboard"
-                  className="
-                    rounded-full
-                    border
-                    border-cyan-500/50
-                    px-5
-                    py-2
-                    text-sm
-                    font-medium
-                    text-cyan-400
-                    transition
-                    hover:bg-cyan-500/10
-                    hover:border-cyan-400
-                  "
-                >
-                  Dashboard
-                </Link>
-
-                <button
-                  onClick={onLogout}
-                  className="
-                    rounded-full
-                    bg-rose-500
-                    px-5
-                    py-2
-                    text-sm
-                    font-semibold
-                    text-white
-                    transition
-                    hover:bg-rose-600
-                    hover:shadow-lg
-                    hover:shadow-rose-500/20
-                  "
-                >
-                  Logout
-                </button>
-              </>
-            ) : (
               <Link
                 to="/login"
                 className={`
@@ -220,7 +179,6 @@ const Topbar = ({ isLoggedIn ,onLogout}) => {
               >
                 Login Now →
               </Link>
-            )}
           </div>
 
           {/* =========================
@@ -294,46 +252,6 @@ const Topbar = ({ isLoggedIn ,onLogout}) => {
 
             {/* Mobile Auth */}
             <div className="mt-5 grid gap-3 border-t border-slate-800 pt-5">
-              {isLoggedIn ? (
-                <>
-                  <Link
-                    to="/dashboard"
-                    onClick={closeMenu}
-                    className="
-                      rounded-xl
-                      border
-                      border-cyan-500/50
-                      px-4
-                      py-3
-                      text-center
-                      text-sm
-                      font-semibold
-                      text-cyan-400
-                      transition
-                      hover:bg-cyan-500/10
-                    "
-                  >
-                    Dashboard
-                  </Link>
-
-                  <button
-                    onClick={handleLogout}
-                    className="
-                      rounded-xl
-                      bg-rose-500
-                      px-4
-                      py-3
-                      text-sm
-                      font-semibold
-                      text-white
-                      transition
-                      hover:bg-rose-600
-                    "
-                  >
-                    Logout
-                  </button>
-                </>
-              ) : (
                 <Link
                   to="/login"
                   onClick={closeMenu}
@@ -349,7 +267,6 @@ const Topbar = ({ isLoggedIn ,onLogout}) => {
                 >
                   Login Now →
                 </Link>
-              )}
             </div>
           </div>
         )}

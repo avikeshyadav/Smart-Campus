@@ -1,7 +1,6 @@
 const db = require("../config/database.js");
 const { createNotification } = require("../config/notificationConfig.js");
 
-
 // =====================================================
 // Helper: Create notification without blocking response
 // =====================================================
@@ -150,8 +149,8 @@ async function addModule(req, res) {
       // ==========================================
       await sendNotification({
         userId: req.user?.userId,
-        type: "MODULE_CREATED",
-        title: "New Module",
+        type: "SUCCESS",
+        title: "MODULE_CREATED",
         message: `${label} module was created successfully.`,
         entityType: "dashboard_menu",
         entityId: result.insertId,
@@ -253,17 +252,11 @@ async function updateModule(req, res) {
       // ==========================================
       await sendNotification({
         userId: req.user?.userId,
-
-        type: "MODULE_UPDATED",
-
-        title: "Module Updated",
-
+        type: "SUCCESS",
+        title: "MODULE_UPDATED",
         message: `${label} module was updated successfully.`,
-
         entityType: "dashboard_menu",
-
         entityId: Number(id),
-
         metadata: {
           moduleId: Number(id),
           label,
@@ -277,6 +270,202 @@ async function updateModule(req, res) {
       });
     }
   );
+}
+
+// =====================================================
+// Change Dashboard Module Order
+// =====================================================
+async function changeModuleOrder(req, res) {
+  const { id } = req.params;
+  const { direction } = req.body;
+
+  if (!id) {
+    return res.status(400).json({
+      success: false,
+      message: "Module ID is required",
+    });
+  }
+
+  if (!["up", "down"].includes(direction)) {
+    return res.status(400).json({
+      success: false,
+      message: "Direction must be up or down",
+    });
+  }
+
+  try {
+    // -------------------------------------------------
+    // Get current module
+    // -------------------------------------------------
+    const currentModule = await new Promise((resolve, reject) => {
+      db.query(
+        `
+        SELECT id, parent_id, sort_order, label
+        FROM dashboard_menu
+        WHERE id = ?
+        `,
+        [id],
+        (err, rows) => {
+          if (err) return reject(err);
+
+          if (!rows.length) {
+            return resolve(null);
+          }
+
+          resolve(rows[0]);
+        }
+      );
+    });
+
+    if (!currentModule) {
+      return res.status(404).json({
+        success: false,
+        message: "Module not found",
+      });
+    }
+
+    // -------------------------------------------------
+    // Find neighbour
+    //
+    // Same parent_id means:
+    // Parent modules reorder with parent modules
+    // Child modules reorder only with same parent
+    // -------------------------------------------------
+    let neighbour;
+
+    if (direction === "up") {
+      neighbour = await new Promise((resolve, reject) => {
+        db.query(
+          `
+          SELECT id, sort_order, label
+          FROM dashboard_menu
+          WHERE
+            (
+              parent_id = ?
+              OR (parent_id IS NULL AND ? IS NULL)
+            )
+            AND sort_order < ?
+          ORDER BY sort_order DESC, id DESC
+          LIMIT 1
+          `,
+          [
+            currentModule.parent_id,
+            currentModule.parent_id,
+            currentModule.sort_order,
+          ],
+          (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows[0] || null);
+          }
+        );
+      });
+    } else {
+      neighbour = await new Promise((resolve, reject) => {
+        db.query(
+          `
+          SELECT id, sort_order, label
+          FROM dashboard_menu
+          WHERE
+            (
+              parent_id = ?
+              OR (parent_id IS NULL AND ? IS NULL)
+            )
+            AND sort_order > ?
+          ORDER BY sort_order ASC, id ASC
+          LIMIT 1
+          `,
+          [
+            currentModule.parent_id,
+            currentModule.parent_id,
+            currentModule.sort_order,
+          ],
+          (err, rows) => {
+            if (err) return reject(err);
+            resolve(rows[0] || null);
+          }
+        );
+      });
+    }
+
+    // -------------------------------------------------
+    // Already first / last
+    // -------------------------------------------------
+    if (!neighbour) {
+      return res.status(200).json({
+        success: true,
+        message:
+          direction === "up"
+            ? "Module is already at the top"
+            : "Module is already at the bottom",
+      });
+    }
+
+    // -------------------------------------------------
+    // Swap sort_order
+    // -------------------------------------------------
+    await new Promise((resolve, reject) => {
+      db.query(
+        `
+        UPDATE dashboard_menu
+        SET sort_order = ?
+        WHERE id = ?
+        `,
+        [neighbour.sort_order, currentModule.id],
+        (err) => {
+          if (err) return reject(err);
+          resolve();
+        }
+      );
+    });
+
+    await new Promise((resolve, reject) => {
+      db.query(
+        `
+        UPDATE dashboard_menu
+        SET sort_order = ?
+        WHERE id = ?
+        `,
+        [currentModule.sort_order, neighbour.id],
+        (err) => {
+          if (err) return reject(err);
+          resolve();
+        }
+      );
+    });
+
+    // -------------------------------------------------
+    // Notification
+    // -------------------------------------------------
+    await sendNotification({
+      userId: req.user?.userId,
+      type: "SUCCESS",
+      title: "MODULE_ORDER_CHANGED",
+      message: `${currentModule.label} module was moved ${direction}.`,
+      entityType: "dashboard_menu",
+      entityId: Number(currentModule.id),
+      metadata: {
+        moduleId: Number(currentModule.id),
+        direction,
+        neighbourId: Number(neighbour.id),
+      },
+    });
+
+    return res.status(200).json({
+      success: true,
+      message:
+        direction === "up"
+          ? "Module moved up"
+          : "Module moved down",
+    });
+  } catch (error) {
+    console.error("Change module order error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Failed to change module order",
+      error: error.message,
+    });
+  }
 }
 
 
@@ -439,17 +628,11 @@ async function deleteModule(req, res) {
           // ==========================================
           await sendNotification({
             userId: req.user?.userId,
-
-            type: "MODULE_DELETED",
-
-            title: "Module Deleted",
-
+            type: "SUCCESS",
+            title: "MODULE_DELETED",
             message: `Module #${id} was deleted successfully.`,
-
             entityType: "dashboard_menu",
-
             entityId: Number(id),
-
             metadata: {
               moduleId: Number(id),
               deletedChildren: childResult.affectedRows,
@@ -474,6 +657,7 @@ module.exports = {
   getModules,
   addModule,
   updateModule,
+  changeModuleOrder,
   updateModuleStatus,
   deleteModule,
 };

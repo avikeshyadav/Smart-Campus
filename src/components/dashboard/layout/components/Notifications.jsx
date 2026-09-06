@@ -1,43 +1,53 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Bell,
-  CheckCircle,
-  AlertTriangle,
-  Info,
-  XCircle,
-  Trash2,
-  Loader2,
-} from "lucide-react";
-
+import React, {useCallback,useEffect,useRef,useState,} from "react";
+import {Bell,CheckCircle,AlertTriangle,Info,XCircle,Trash2,Loader2,} from "lucide-react";
 import { useAuth } from "../../../../context/AuthContext";
 import { BASE_URI } from "../../../../config/api";
-
+import { useNavigate } from "react-router-dom";
 
 // =====================================================
 // Notification type -> UI type
 // =====================================================
 const getNotificationType = (type) => {
-  switch (type) {
+  // Normalize backend value
+  const normalizedType = String(type || "")
+    .trim()
+    .toUpperCase();
+  switch (normalizedType) {
+    // =========================
+    // SUCCESS
+    // =========================
     case "STUDENT_REGISTERED":
     case "STUDENT_UPDATED":
+    case "STUDENT_LOGIN":
+    case "SUCCESS":
       return "success";
 
+    // =========================
+    // WARNING
+    // =========================
     case "UNKNOWN_FACE":
     case "ATTENDANCE_LATE":
     case "ATTENDANCE_ABSENT":
     case "CAMERA_DISCONNECTED":
     case "MODULE_DISABLED":
+    case "WARNING":
       return "warning";
 
+    // =========================
+    // ERROR
+    // =========================
     case "SYSTEM_ERROR":
     case "PAYMENT_FAILED":
+    case "ERROR":
       return "error";
 
+    // =========================
+    // DEFAULT
+    // =========================
     default:
       return "info";
   }
 };
-
 
 // =====================================================
 // Relative time
@@ -46,6 +56,11 @@ const getRelativeTime = (date) => {
   if (!date) return "";
 
   const created = new Date(date).getTime();
+
+  if (Number.isNaN(created)) {
+    return "";
+  }
+
   const now = Date.now();
 
   const diff = Math.max(0, now - created);
@@ -70,23 +85,23 @@ const getRelativeTime = (date) => {
   return `${days} day${days > 1 ? "s" : ""} ago`;
 };
 
-
 // =====================================================
 // Notification Component
 // =====================================================
 const Notification = () => {
-  const { authFetch, isLoading: authLoading } = useAuth();
+  const {
+    authFetch,
+    isLoading: authLoading,
+  } = useAuth();
 
   const notificationRef = useRef(null);
 
   const [open, setOpen] = useState(false);
-
   const [notifications, setNotifications] = useState([]);
-
   const [loading, setLoading] = useState(true);
-
   const [actionLoading, setActionLoading] = useState(false);
 
+  const navigate = useNavigate();
 
   // ===================================================
   // Fetch notifications
@@ -108,8 +123,15 @@ const Notification = () => {
       }
 
       const data = await res.json();
-
-      setNotifications(data.notifications || data.data || []);
+      const notificationData =
+        data.notifications ||
+        data.data ||
+        [];
+      setNotifications(
+        Array.isArray(notificationData)
+          ? notificationData
+          : []
+      );
     } catch (error) {
       console.error(
         "Fetch notifications error:",
@@ -122,14 +144,12 @@ const Notification = () => {
     }
   }, [authFetch, authLoading]);
 
-
   // ===================================================
   // Initial load
   // ===================================================
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
-
 
   // ===================================================
   // Poll every 30 seconds
@@ -141,18 +161,21 @@ const Notification = () => {
       fetchNotifications();
     }, 30000);
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+    };
   }, [fetchNotifications, authLoading]);
 
-
   // ===================================================
-  // Close dropdown outside click
+  // Close dropdown on outside click
   // ===================================================
   useEffect(() => {
     const handleClick = (event) => {
       if (
         notificationRef.current &&
-        !notificationRef.current.contains(event.target)
+        !notificationRef.current.contains(
+          event.target
+        )
       ) {
         setOpen(false);
       }
@@ -171,14 +194,13 @@ const Notification = () => {
     };
   }, []);
 
-
   // ===================================================
   // Unread count
   // ===================================================
   const unreadCount = notifications.filter(
-    (notification) => !notification.is_read
+    (notification) =>
+      !notification.is_read
   ).length;
-
 
   // ===================================================
   // Mark single notification as read
@@ -217,9 +239,8 @@ const Notification = () => {
     }
   };
 
-
   // ===================================================
-  // Mark all as read
+  // Mark all notifications as read
   // ===================================================
   const markAllRead = async () => {
     if (unreadCount === 0) return;
@@ -257,7 +278,6 @@ const Notification = () => {
     }
   };
 
-
   // ===================================================
   // Delete notification
   // ===================================================
@@ -281,7 +301,8 @@ const Notification = () => {
       // Remove immediately from UI
       setNotifications((prev) =>
         prev.filter(
-          (notification) => notification.id !== id
+          (notification) =>
+            notification.id !== id
         )
       );
     } catch (error) {
@@ -294,13 +315,15 @@ const Notification = () => {
     }
   };
 
-
   // ===================================================
-  // Icon
+  // Render notification icon
   // ===================================================
   const renderIcon = (type) => {
     const uiType = getNotificationType(type);
 
+    // =========================
+    // SUCCESS
+    // =========================
     if (uiType === "success") {
       return (
         <CheckCircle
@@ -310,6 +333,9 @@ const Notification = () => {
       );
     }
 
+    // =========================
+    // WARNING
+    // =========================
     if (uiType === "warning") {
       return (
         <AlertTriangle
@@ -319,6 +345,9 @@ const Notification = () => {
       );
     }
 
+    // =========================
+    // ERROR
+    // =========================
     if (uiType === "error") {
       return (
         <XCircle
@@ -328,6 +357,9 @@ const Notification = () => {
       );
     }
 
+    // =========================
+    // INFO
+    // =========================
     return (
       <Info
         size={20}
@@ -336,7 +368,9 @@ const Notification = () => {
     );
   };
 
-
+  // ===================================================
+  // UI
+  // ===================================================
   return (
     <div
       ref={notificationRef}
@@ -347,7 +381,9 @@ const Notification = () => {
       ================================================= */}
       <button
         type="button"
-        onClick={() => setOpen((prev) => !prev)}
+        onClick={() =>
+          setOpen((prev) => !prev)
+        }
         className="
           relative
           rounded-xl
@@ -390,7 +426,6 @@ const Notification = () => {
         )}
       </button>
 
-
       {/* =================================================
           Dropdown
       ================================================= */}
@@ -410,7 +445,6 @@ const Notification = () => {
             shadow-2xl
           "
         >
-
           {/* =================================================
               Header
           ================================================= */}
@@ -458,129 +492,127 @@ const Notification = () => {
             </button>
           </div>
 
-
           {/* =================================================
               Notification List
           ================================================= */}
           <div className="max-h-[400px] overflow-y-auto">
-
             {/* Loading */}
             {loading ? (
               <div className="flex items-center justify-center py-12">
                 <Loader2
                   size={24}
-                  className="animate-spin text-cyan-400"
+                  className="
+                    animate-spin
+                    text-cyan-400
+                  "
                 />
               </div>
             ) : notifications.length === 0 ? (
-
               /* Empty */
               <div className="py-12 text-center">
                 <Bell
                   size={30}
-                  className="mx-auto mb-3 text-slate-700"
+                  className="
+                    mx-auto
+                    mb-3
+                    text-slate-700
+                  "
                 />
 
                 <p className="text-sm text-slate-500">
                   No notifications
                 </p>
               </div>
-
             ) : (
-
               /* List */
-              notifications.map((item) => (
-                <div
-                  key={item.id}
-                  onClick={() => {
-                    if (!item.is_read) {
-                      markAsRead(item.id);
-                    }
-                  }}
-                  className={`
-                    flex
-                    cursor-pointer
-                    items-start
-                    gap-3
-                    border-b
-                    border-slate-800
-                    p-4
-                    transition
-                    hover:bg-slate-900
-                    ${
-                      !item.is_read
-                        ? "bg-slate-900/50"
-                        : ""
-                    }
-                  `}
-                >
-
-                  {/* Icon */}
-                  <div className="mt-1 shrink-0">
-                    {renderIcon(item.type)}
-                  </div>
-
-
-                  {/* Text */}
-                  <div className="min-w-0 flex-1">
-
-                    <div className="flex items-center justify-between gap-2">
-
-                      <h4 className="truncate font-medium text-white">
-                        {item.title}
-                      </h4>
-
-                      {!item.is_read && (
-                        <span
-                          className="
-                            h-2
-                            w-2
-                            shrink-0
-                            rounded-full
-                            bg-cyan-400
-                          "
-                        />
-                      )}
+              notifications.map((item) => {
+                return (
+                  <div
+                    key={item.id}
+                    onClick={() => {
+                      if (!item.is_read) {
+                        markAsRead(item.id);
+                      }
+                    }}
+                    className={`
+                      flex
+                      cursor-pointer
+                      items-start
+                      gap-3
+                      border-b
+                      border-slate-800
+                      p-4
+                      transition
+                      hover:bg-slate-900
+                      ${
+                        !item.is_read
+                          ? "bg-green-600/50"
+                          : ""
+                      }
+                    `}
+                  >
+                    {/* Icon */}
+                    <div className="mt-1 shrink-0">
+                      {renderIcon(item.type)}
                     </div>
 
+                    {/* Text */}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2">
+                        <h4 className="truncate font-medium text-white">
+                          {item.title}
+                        </h4>
 
-                    <p className="mt-1 text-sm text-slate-400">
-                      {item.message}
-                    </p>
+                        {!item.is_read && (
+                          <span
+                            className="
+                              h-2
+                              w-2
+                              shrink-0
+                              rounded-full
+                              bg-cyan-400
+                            "
+                          />
+                        )}
+                      </div>
 
+                      <p className="mt-1 text-sm text-slate-400">
+                        {item.message}
+                      </p>
 
-                    <p className="mt-2 text-xs text-slate-500">
-                      {getRelativeTime(item.created_at)}
-                    </p>
+                      <p className="mt-2 text-xs text-slate-500">
+                        {getRelativeTime(
+                          item.created_at
+                        )}
+                      </p>
+                    </div>
 
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        deleteNotification(
+                          item.id
+                        );
+                      }}
+                      disabled={actionLoading}
+                      className="
+                        shrink-0
+                        text-slate-600
+                        transition
+                        hover:text-red-400
+                        disabled:opacity-40
+                      "
+                      aria-label="Delete notification"
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </div>
-
-
-                  {/* Delete */}
-                  <button
-                    type="button"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      deleteNotification(item.id);
-                    }}
-                    disabled={actionLoading}
-                    className="
-                      shrink-0
-                      text-slate-600
-                      transition
-                      hover:text-red-400
-                      disabled:opacity-40
-                    "
-                    aria-label="Delete notification"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-
-                </div>
-              ))
+                );
+              })
             )}
           </div>
-
 
           {/* =================================================
               Footer
@@ -590,8 +622,7 @@ const Notification = () => {
               type="button"
               onClick={() => {
                 setOpen(false);
-                // Later:
-                // navigate("/notifications");
+                navigate("notifications");
               }}
               className="
                 w-full
@@ -608,7 +639,6 @@ const Notification = () => {
               View All Notifications
             </button>
           </div>
-
         </div>
       )}
     </div>

@@ -21,34 +21,38 @@ import {
   FilesetResolver,
 } from "@mediapipe/tasks-vision";
 
-import StatusDot from "./StatusDot";
 import { toast } from "react-hot-toast";
-const SEARCH_URL =
-  "/py-api/api/students/attendance";
-const SCAN_DELAY = 2500;
+import StatusDot from "./StatusDot";
+
+const SEARCH_URL = "/py-api/api/students/attendance";
+
 const DETAIL_TIME = 3000;
+const RECOGNITION_INTERVAL = 700;
 
 /*
- * Minimum face confidence.
- *
- * 0.80 = 80%
+ * Minimum MediaPipe face detection confidence.
  */
 const FACE_CONFIDENCE = 0.65;
 
 /*
- * MediaPipe face detector model
+ * Backend attendance confidence requirement.
+ */
+const ATTENDANCE_CONFIDENCE_THRESHOLD = 90;
+
+/*
+ * MediaPipe model.
  */
 const FACE_MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/1/blaze_face_short_range.tflite";
 
 /*
- * MediaPipe WASM
+ * MediaPipe WASM.
  */
 const WASM_URL =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm";
 
 export default function LiveAttendanceCard({
-  baseUri,
+  baseUri = "",
   accessToken,
   databaseOnline,
   onAttendanceDetected,
@@ -58,134 +62,48 @@ export default function LiveAttendanceCard({
   // =========================================================
 
   const videoRef = useRef(null);
-
   const canvasRef = useRef(null);
 
   const streamRef = useRef(null);
+  const faceDetectorRef = useRef(null);
 
-  const timerRef = useRef(null);
+  const faceLoopRef = useRef(null);
+  const recognitionTimerRef = useRef(null);
+  const studentTimerRef = useRef(null);
 
-  const faceDetectorRef =
-    useRef(null);
+  const processingFaceRef = useRef(false);
 
-  const faceLoopRef =
-    useRef(null);
+  const faceBoxesRef = useRef([]);
+  const faceDetectedRef = useRef(false);
+  const faceConfidenceRef = useRef(0);
 
-  /*
-   * Prevent multiple recognition jobs
-   * at the same time.
-   */
-  const runningRef =
-    useRef(false);
-
-  /*
-   * Current valid face detected.
-   */
-  const faceDetectedRef =
-    useRef(false);
-
-  /*
-   * Backward-compatible single/latest face box.
-   */
-  const faceBoxRef =
-    useRef(null);
-
-  /*
-   * ALL currently detected valid faces.
-   */
-  const faceBoxesRef =
-    useRef([]);
-
-  /*
-   * Latest face confidence.
-   */
-  const faceConfidenceRef =
-    useRef(0);
-
-  /*
-   * Last recognized student.
-   */
-  const lastStudentRef =
-    useRef("");
-
-  const lastTimeRef =
-    useRef(0);
-
-  /*
-   * Prevent multiple face-processing loops.
-   */
-  const processingFaceRef =
-    useRef(false);
-
-  /*
-   * Student duplicate protection.
-   *
-   * student_id -> timestamp
-   */
-  const recognizedStudentsRef =
-    useRef(new Map());
+  const recognizedStudentsRef = useRef(new Map());
+  const capturedTimeoutsRef = useRef(new Map());
 
   // =========================================================
   // STATE
   // =========================================================
 
-  const [
-    cameraOnline,
-    setCameraOnline,
-  ] = useState(false);
+  const [cameraOnline, setCameraOnline] = useState(false);
+  const [cameraError, setCameraError] = useState("");
 
-  const [
-    cameraError,
-    setCameraError,
-  ] = useState("");
+  const [faceDetected, setFaceDetected] = useState(false);
+  const [faceConfidence, setFaceConfidence] = useState(0);
 
-  const [
-    faceDetected,
-    setFaceDetected,
-  ] = useState(false);
+  const [detectedFaces, setDetectedFaces] = useState([]);
 
-  const [
-    faceConfidence,
-    setFaceConfidence,
-  ] = useState(0);
+  const [faceEngineReady, setFaceEngineReady] =
+    useState(false);
 
-  const [
-    detectedFaces,
-    setDetectedFaces,
-  ] = useState([]);
+  const [faceEngineError, setFaceEngineError] =
+    useState("");
 
-  const [
-    faceEngineReady,
-    setFaceEngineReady,
-  ] = useState(false);
+  const [scanning, setScanning] = useState(false);
 
-  const [
-    faceEngineError,
-    setFaceEngineError,
-  ] = useState("");
+  const [student, setStudent] = useState(null);
+  const [showStudent, setShowStudent] = useState(false);
 
-  const [
-    scanning,
-    setScanning,
-  ] = useState(false);
-
-  const [
-    student,
-    setStudent,
-  ] = useState(null);
-
-  const [
-    showStudent,
-    setShowStudent,
-  ] = useState(false);
-
-  /*
-   * Multiple captured face previews.
-   */
-  const [
-    capturedFaces,
-    setCapturedFaces,
-  ] = useState([]);
+  const [capturedFaces, setCapturedFaces] = useState([]);
 
   // =========================================================
   // CAMERA
@@ -196,26 +114,33 @@ export default function LiveAttendanceCard({
 
     async function startCamera() {
       try {
-        if (
-          !navigator.mediaDevices?.getUserMedia
-        ) {
+        if (!navigator.mediaDevices?.getUserMedia) {
           throw new Error(
-            "Camera not supported by this browser"
+            "Camera is not supported by this browser."
           );
         }
 
         const stream =
           await navigator.mediaDevices.getUserMedia({
             video: {
-              facingMode: "user",
-
-              width: {
-                ideal: 1920,
-                min: 1280,
+              facingMode: {
+                ideal: "user",
               },
+
+              /*
+               * Request high-resolution camera feed.
+               *
+               * Browser/camera may choose the closest
+               * supported resolution.
+               */
+              width: {
+                ideal: 1280,
+                min: 640,
+              },
+
               height: {
-                ideal: 1080,
-                min: 720,
+                ideal: 720,
+                min: 480,
               },
 
               frameRate: {
@@ -230,40 +155,91 @@ export default function LiveAttendanceCard({
         if (cancelled) {
           stream
             .getTracks()
-            .forEach((track) =>
-              track.stop()
-            );
+            .forEach((track) => track.stop());
 
           return;
         }
 
-        streamRef.current =
-          stream;
+        streamRef.current = stream;
 
-        const video =
-          videoRef.current;
+        const video = videoRef.current;
 
-        if (video) {
-          video.srcObject =
-            stream;
-
-          await video.play();
+        if (!video) {
+          throw new Error(
+            "Video element not available."
+          );
         }
 
-        setCameraOnline(true);
+        video.srcObject = stream;
 
-        setCameraError("");
+        await new Promise((resolve) => {
+          if (video.readyState >= 1) {
+            resolve();
+            return;
+          }
+
+          const handleLoadedMetadata = () => {
+            video.removeEventListener(
+              "loadedmetadata",
+              handleLoadedMetadata
+            );
+
+            resolve();
+          };
+
+          video.addEventListener(
+            "loadedmetadata",
+            handleLoadedMetadata
+          );
+        });
+
+        if (!cancelled) {
+          await video.play();
+
+          /*
+           * Debug:
+           * Shows the ACTUAL camera resolution.
+           */
+          console.log(
+            "Actual camera resolution:",
+            `${video.videoWidth} x ${video.videoHeight}`,
+            `ratio=${(
+              video.videoWidth /
+              video.videoHeight
+            ).toFixed(3)}`
+          );
+
+          /*
+           * Also show MediaStream track settings.
+           */
+          const track =
+            stream.getVideoTracks()[0];
+
+          if (track) {
+            console.log(
+              "Camera track settings:",
+              track.getSettings()
+            );
+          }
+
+          setCameraOnline(true);
+          setCameraError("");
+        }
       } catch (error) {
         console.error(
           "Camera error:",
           error
         );
 
+        if (cancelled) {
+          return;
+        }
+
         setCameraOnline(false);
 
         setCameraError(
           error?.message ||
-            "Camera permission required"
+            "Camera permission is required."
         );
       }
     }
@@ -276,18 +252,21 @@ export default function LiveAttendanceCard({
       if (streamRef.current) {
         streamRef.current
           .getTracks()
-          .forEach((track) =>
-            track.stop()
-          );
+          .forEach((track) => track.stop());
 
-        streamRef.current =
-          null;
+        streamRef.current = null;
+      }
+
+      const video = videoRef.current;
+
+      if (video) {
+        video.srcObject = null;
       }
     };
   }, []);
 
   // =========================================================
-  // INITIALIZE MEDIAPIPE
+  // MEDIAPIPE INITIALIZATION
   // =========================================================
 
   useEffect(() => {
@@ -296,7 +275,6 @@ export default function LiveAttendanceCard({
     async function initializeFaceDetector() {
       try {
         setFaceEngineReady(false);
-
         setFaceEngineError("");
 
         console.log(
@@ -310,9 +288,9 @@ export default function LiveAttendanceCard({
 
         let detector = null;
 
-        // =====================================================
-        // TRY GPU
-        // =====================================================
+        // -----------------------------------------------------
+        // GPU
+        // -----------------------------------------------------
 
         try {
           console.log(
@@ -331,26 +309,26 @@ export default function LiveAttendanceCard({
                 },
 
                 runningMode: "VIDEO",
+
                 minDetectionConfidence:
                   FACE_CONFIDENCE,
 
-                minSuppressionThreshold:
-                  0.3,
+                minSuppressionThreshold: 0.3,
               }
             );
 
           console.log(
-            "GPU face detector ready"
+            "GPU face detector ready."
           );
         } catch (gpuError) {
           console.warn(
-            "GPU failed. Falling back to CPU.",
+            "GPU initialization failed. Using CPU.",
             gpuError
           );
 
-          // ===================================================
-          // CPU FALLBACK
-          // ===================================================
+          // ---------------------------------------------------
+          // CPU
+          // ---------------------------------------------------
 
           detector =
             await FaceDetector.createFromOptions(
@@ -368,13 +346,12 @@ export default function LiveAttendanceCard({
                 minDetectionConfidence:
                   FACE_CONFIDENCE,
 
-                minSuppressionThreshold:
-                  0.3,
+                minSuppressionThreshold: 0.3,
               }
             );
 
           console.log(
-            "CPU face detector ready"
+            "CPU face detector ready."
           );
         }
 
@@ -390,11 +367,10 @@ export default function LiveAttendanceCard({
           detector;
 
         setFaceEngineReady(true);
-
         setFaceEngineError("");
 
         console.log(
-          "Face detector READY"
+          "Face detector READY."
         );
       } catch (error) {
         console.error(
@@ -402,12 +378,14 @@ export default function LiveAttendanceCard({
           error
         );
 
-        setFaceEngineReady(false);
+        if (!cancelled) {
+          setFaceEngineReady(false);
 
-        setFaceEngineError(
-          error?.message ||
-            "Face detection engine failed to load"
-        );
+          setFaceEngineError(
+            error?.message ||
+              "Face detection engine failed to load."
+          );
+        }
       }
     }
 
@@ -416,9 +394,7 @@ export default function LiveAttendanceCard({
     return () => {
       cancelled = true;
 
-      if (
-        faceDetectorRef.current
-      ) {
+      if (faceDetectorRef.current) {
         try {
           faceDetectorRef.current.close();
         } catch {}
@@ -442,7 +418,6 @@ export default function LiveAttendanceCard({
     }
 
     let cancelled = false;
-
     let lastVideoTime = -1;
 
     function detectFace() {
@@ -450,23 +425,17 @@ export default function LiveAttendanceCard({
         return;
       }
 
-      const video =
-        videoRef.current;
-
+      const video = videoRef.current;
       const detector =
         faceDetectorRef.current;
-
-      // =====================================================
-      // CAMERA / DETECTOR NOT READY
-      // =====================================================
 
       if (
         !video ||
         !detector ||
         video.readyState <
           HTMLMediaElement.HAVE_CURRENT_DATA ||
-        video.videoWidth === 0 ||
-        video.videoHeight === 0
+        video.videoWidth <= 0 ||
+        video.videoHeight <= 0
       ) {
         faceLoopRef.current =
           requestAnimationFrame(
@@ -478,8 +447,7 @@ export default function LiveAttendanceCard({
 
       try {
         /*
-         * Same video frame ko repeatedly
-         * process na karein.
+         * Only process a new video frame.
          */
         if (
           video.currentTime !==
@@ -495,12 +463,7 @@ export default function LiveAttendanceCard({
             video.currentTime;
 
           const detections =
-            result?.detections ||
-            [];
-
-          // ===================================================
-          // ALL VALID FACES
-          // ===================================================
+            result?.detections || [];
 
           const validFaces =
             detections
@@ -564,19 +527,20 @@ export default function LiveAttendanceCard({
               )
               .filter(Boolean);
 
-          // ===================================================
+          // ---------------------------------------------------
           // SAVE ALL FACES
-          // ===================================================
+          // ---------------------------------------------------
 
           faceBoxesRef.current =
             validFaces;
+
           setDetectedFaces(
             validFaces
           );
 
-          // ===================================================
+          // ---------------------------------------------------
           // LARGEST FACE
-          // ===================================================
+          // ---------------------------------------------------
 
           const largestFace =
             validFaces.reduce(
@@ -604,51 +568,30 @@ export default function LiveAttendanceCard({
               null
             );
 
-          /*
-           * Keep old refs populated
-           * for compatibility.
-           */
           if (largestFace) {
-            faceBoxRef.current = {
-              x: largestFace.x,
-              y: largestFace.y,
-              width:
-                largestFace.width,
-              height:
-                largestFace.height,
-            };
-
             faceConfidenceRef.current =
               largestFace.confidence;
           } else {
-            faceBoxRef.current =
-              null;
-
             faceConfidenceRef.current =
               0;
           }
 
-          // ===================================================
-          // FACE STATUS
-          // ===================================================
+          // ---------------------------------------------------
+          // STATUS
+          // ---------------------------------------------------
 
           const hasFaces =
             validFaces.length > 0;
 
-          if (
-            faceDetectedRef.current !==
-            hasFaces
-          ) {
-            faceDetectedRef.current =
-              hasFaces;
+          faceDetectedRef.current =
+            hasFaces;
 
-            setFaceDetected(
-              hasFaces
-            );
-          }
+          setFaceDetected(
+            hasFaces
+          );
 
           const maxConfidence =
-            validFaces.length
+            validFaces.length > 0
               ? Math.max(
                   ...validFaces.map(
                     (face) =>
@@ -664,51 +607,20 @@ export default function LiveAttendanceCard({
             maxConfidence
           );
 
-          // ===================================================
+          // ---------------------------------------------------
           // NO FACE
-          // ===================================================
+          // ---------------------------------------------------
 
           if (!hasFaces) {
-            faceDetectedRef.current =
-              false;
-
-            faceBoxRef.current =
-              null;
-
             faceBoxesRef.current =
               [];
 
-            faceConfidenceRef.current =
-              0;
-
             setDetectedFaces([]);
 
-            setFaceDetected(
-              false
-            );
-
+            setFaceDetected(false);
             setFaceConfidence(0);
 
             setScanning(false);
-
-            /*
-             * Pending retry cancel.
-             */
-            if (timerRef.current) {
-              clearTimeout(
-                timerRef.current
-              );
-
-              timerRef.current =
-                null;
-            }
-          }
-
-          // ===================================================
-          // DEBUG
-          // ===================================================
-
-          if (hasFaces) {
           }
         }
       } catch (error) {
@@ -732,9 +644,7 @@ export default function LiveAttendanceCard({
     return () => {
       cancelled = true;
 
-      if (
-        faceLoopRef.current
-      ) {
+      if (faceLoopRef.current) {
         cancelAnimationFrame(
           faceLoopRef.current
         );
@@ -749,292 +659,207 @@ export default function LiveAttendanceCard({
   ]);
 
   // =========================================================
-  // CREATE FACE CROP
+  // FACE CROP
   // =========================================================
 
-  const createFaceCrop =
+const createFaceCrop = useCallback(async () => {
+  const video = videoRef.current;
+  const canvas = canvasRef.current;
+
+  if (!video || !canvas) {
+    return null;
+  }
+
+  const videoWidth = video.videoWidth;
+  const videoHeight = video.videoHeight;
+
+  if (videoWidth <= 0 || videoHeight <= 0) {
+    return null;
+  }
+
+  // =============================================
+  // FULL ORIGINAL CAMERA FRAME
+  // =============================================
+
+  canvas.width = videoWidth;
+  canvas.height = videoHeight;
+
+  const ctx = canvas.getContext("2d");
+
+  if (!ctx) {
+    return null;
+  }
+
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+
+  ctx.drawImage(
+    video,
+    0,
+    0,
+    videoWidth,
+    videoHeight
+  );
+
+  // =============================================
+  // JPEG - HIGH QUALITY
+  // =============================================
+
+  const blob = await new Promise((resolve) => {
+    canvas.toBlob(
+      resolve,
+      "image/jpeg",
+      0.98
+    );
+  });
+
+  if (!blob) {
+    return null;
+  }
+
+  console.log("FULL FRAME:", {
+    source: `${videoWidth}x${videoHeight}`,
+    output: `${videoWidth}x${videoHeight}`,
+    blobKB: (blob.size / 1024).toFixed(1),
+    type: blob.type,
+  });
+
+  return {
+    blob,
+
+    // Full frame, no crop
+    crop: {
+      x: 0,
+      y: 0,
+      width: videoWidth,
+      height: videoHeight,
+    },
+
+    output: {
+      width: videoWidth,
+      height: videoHeight,
+    },
+
+    source: {
+      width: videoWidth,
+      height: videoHeight,
+    },
+  };
+}, []);
+
+
+
+  // =========================================================
+  // CAPTURE PREVIEW
+  // =========================================================
+
+  const addCapturedFace =
     useCallback(
-      async (inputFaceBox) => {
-        const video =
-          videoRef.current;
-
-        const canvas =
-          canvasRef.current;
-
-        const faceBox =
-          inputFaceBox ||
-          faceBoxRef.current;
-
-        if (
-          !video ||
-          !canvas ||
-          !faceBox
-        ) {
-          return null;
-        }
-
-        if (
-          video.videoWidth <= 0 ||
-          video.videoHeight <= 0
-        ) {
-          return null;
-        }
-
-        // ===================================================
-        // FACE BOX
-        // ===================================================
-
-        let x =
-          Number(faceBox.x) || 0;
-
-        let y =
-          Number(faceBox.y) || 0;
-
-        let width =
-          Number(faceBox.width) || 0;
-
-        let height =
-          Number(faceBox.height) || 0;
-
-        if (
-          width <= 10 ||
-          height <= 10
-        ) {
-          return null;
-        }
-
-        // ===================================================
-        // FACE PADDING
-        // ===================================================
-
-        let paddingX =
-          width * 0.55;
-
-        let paddingY =
-          height * 0.65;
-
-        // ===================================================
-        // DISTANCE COMPENSATION
-        // ===================================================
-
-        const videoArea =
-          video.videoWidth *
-          video.videoHeight;
-
-        const faceArea =
-          width * height;
-
-        const faceRatio =
-          faceArea /
-          videoArea;
-
-        /*
-         * Small/distant face.
-         */
-        if (
-          faceRatio < 0.05
-        ) {
-          paddingX =
-            width * 0.45;
-
-          paddingY =
-            height * 0.65;
-        }
-
-        /*
-         * Extremely small face.
-         */
-        if (
-          faceRatio < 0.05
-        ) {
-          paddingX =
-            width * 0.40;
-
-          paddingY =
-            height * 0.60;
-        }
-
-        // ===================================================
-        // EXPAND
-        // ===================================================
-
-        x -= paddingX;
-
-        y -= paddingY;
-
-        width +=
-          paddingX * 2;
-
-        height +=
-          paddingY * 2;
-
-        // ===================================================
-        // ASPECT RATIO
-        // ===================================================
-
-        const targetAspect =
-          4 / 5;
-
-        const currentAspect =
-          width / height;
-
-        if (
-          currentAspect >
-          targetAspect
-        ) {
-          const newWidth =
-            height *
-            targetAspect;
-
-          x +=
-            (width -
-              newWidth) /
-            2;
-
-          width =
-            newWidth;
-        } else {
-          const newHeight =
-            width /
-            targetAspect;
-
-          y +=
-            (height -
-              newHeight) /
-            2;
-
-          height =
-            newHeight;
-        }
-
-        // ===================================================
-        // CLAMP
-        // ===================================================
-
-        x = Math.max(
-          0,
-          x
-        );
-
-        y = Math.max(
-          0,
-          y
-        );
-
-        width = Math.min(
-          width,
-          video.videoWidth -
-            x
-        );
-
-        height = Math.min(
-          height,
-          video.videoHeight -
-            y
-        );
-
-        if (
-          width <= 5 ||
-          height <= 5
-        ) {
-          return null;
-        }
-
-        // ===================================================
-        // OUTPUT
-        // ===================================================
-
-        const outputWidth =
-          640;
-
-        const outputHeight =
-          Math.round(
-            outputWidth *
-              (height / width)
+      (
+        blob,
+        confidence,
+        index
+      ) => {
+        const url =
+          URL.createObjectURL(
+            blob
           );
 
-        canvas.width =
-          outputWidth;
+        const id =
+          `${Date.now()}-${index}-${Math.random()
+            .toString(36)
+            .slice(2)}`;
 
-        canvas.height =
-          outputHeight;
+        setCapturedFaces(
+          (current) => [
+            ...current.slice(-5),
 
-        const ctx =
-          canvas.getContext(
-            "2d"
-          );
-
-        if (!ctx) {
-          return null;
-        }
-
-        // ===================================================
-        // IMAGE QUALITY
-        // ===================================================
-
-        ctx.imageSmoothingEnabled =
-          true;
-
-        ctx.imageSmoothingQuality =
-          "high";
-
-        ctx.fillStyle =
-          "#000";
-
-        ctx.fillRect(
-          0,
-          0,
-          outputWidth,
-          outputHeight
+            {
+              id,
+              url,
+              confidence,
+              index:
+                index + 1,
+            },
+          ]
         );
 
-        // ===================================================
-        // DRAW FACE
-        // ===================================================
+        const timeoutId =
+          window.setTimeout(
+            () => {
+              setCapturedFaces(
+                (current) => {
+                  const item =
+                    current.find(
+                      (
+                        entry
+                      ) =>
+                        entry.id ===
+                        id
+                    );
 
-        ctx.drawImage(
-          video,
+                  if (item) {
+                    URL.revokeObjectURL(
+                      item.url
+                    );
+                  }
 
-          x,
-          y,
-          width,
-          height,
-
-          0,
-          0,
-          outputWidth,
-          outputHeight
-        );
-
-        // ===================================================
-        // JPEG
-        // ===================================================
-
-        const blob =
-          await new Promise(
-            (resolve) => {
-              canvas.toBlob(
-                resolve,
-                "image/jpeg",
-                0.60
+                  return current.filter(
+                    (
+                      entry
+                    ) =>
+                      entry.id !==
+                      id
+                  );
+                }
               );
-            }
+
+              capturedTimeoutsRef.current.delete(
+                id
+              );
+            },
+            4000
           );
 
-        if (!blob) {
-          return null;
+        capturedTimeoutsRef.current.set(
+          id,
+          timeoutId
+        );
+      },
+      []
+    );
+
+  // =========================================================
+  // BACKEND ERROR MESSAGE
+  // =========================================================
+
+  const getApiErrorMessage =
+    useCallback(
+      async (response) => {
+        try {
+          const data =
+            await response.json();
+
+          if (
+            typeof data?.detail ===
+            "string"
+          ) {
+            return data.detail;
+          }
+
+          if (
+            data?.detail?.message
+          ) {
+            return data.detail.message;
+          }
+
+          return (
+            data?.message ||
+            `Request failed with status ${response.status}`
+          );
+        } catch {
+          return `Request failed with status ${response.status}`;
         }
-
-        return {
-          blob,
-
-          crop: {
-            x,
-            y,
-            width,
-            height,
-          },
-        };
       },
       []
     );
@@ -1066,9 +891,6 @@ export default function LiveAttendanceCard({
         processingFaceRef.current =
           true;
 
-        runningRef.current =
-          true;
-
         setScanning(true);
 
         try {
@@ -1083,12 +905,8 @@ export default function LiveAttendanceCard({
             );
 
           console.log(
-            `Sending ${facesToProcess.length} faces to backend`
+            `Processing ${facesToProcess.length} face(s)`
           );
-
-          // =================================================
-          // PROCESS EVERY FACE
-          // =================================================
 
           for (
             let index = 0;
@@ -1096,9 +914,6 @@ export default function LiveAttendanceCard({
             facesToProcess.length;
             index++
           ) {
-            /*
-             * Camera/backend state may have changed.
-             */
             if (
               !cameraOnline ||
               !databaseOnline
@@ -1107,11 +922,9 @@ export default function LiveAttendanceCard({
             }
 
             const face =
-              facesToProcess[index];
-
-            // ===============================================
-            // CONFIDENCE
-            // ===============================================
+              facesToProcess[
+                index
+              ];
 
             if (
               face.confidence <
@@ -1120,89 +933,34 @@ export default function LiveAttendanceCard({
               continue;
             }
 
-            // ===============================================
+            // =================================================
             // CREATE FACE CROP
-            // ===============================================
+            // =================================================
 
             const result =
-              await createFaceCrop({
-                x: face.x,
-                y: face.y,
-                width:
-                  face.width,
-                height:
-                  face.height,
-              });
+              await createFaceCrop(
+                face
+              );
 
-            if (!result?.blob) {
+            if (
+              !result?.blob
+            ) {
               continue;
             }
 
-            // ===============================================
-            // CAPTURE PREVIEW
-            // ===============================================
+            // =================================================
+            // PREVIEW
+            // =================================================
 
-            const previewUrl =
-              URL.createObjectURL(
-                result.blob
-              );
-
-            const capturedId =
-              `${Date.now()}-${index}-${Math.random()}`;
-
-            setCapturedFaces(
-              (current) => [
-                ...current.slice(-5),
-
-                {
-                  id: capturedId,
-
-                  url: previewUrl,
-
-                  confidence:
-                    face.confidence,
-
-                  index:
-                    index + 1,
-                },
-              ]
+            addCapturedFace(
+              result.blob,
+              face.confidence,
+              index
             );
 
-            // ===============================================
-            // REMOVE PREVIEW AFTER 4 SEC
-            // ===============================================
-
-            window.setTimeout(
-              () => {
-                setCapturedFaces(
-                  (current) => {
-                    const item =
-                      current.find(
-                        (entry) =>
-                          entry.id ===
-                          capturedId
-                      );
-
-                    if (item) {
-                      URL.revokeObjectURL(
-                        item.url
-                      );
-                    }
-
-                    return current.filter(
-                      (entry) =>
-                        entry.id !==
-                        capturedId
-                    );
-                  }
-                );
-              },
-              4000
-            );
-
-            // ===============================================
+            // =================================================
             // FORM DATA
-            // ===============================================
+            // =================================================
 
             const form =
               new FormData();
@@ -1220,12 +978,6 @@ export default function LiveAttendanceCard({
               )
             );
 
-            /*
-             * Optional metadata.
-             *
-             * Existing backend can simply ignore
-             * these fields.
-             */
             form.append(
               "face_index",
               String(index)
@@ -1238,9 +990,38 @@ export default function LiveAttendanceCard({
               )
             );
 
-            // ===============================================
-            // DEBUG
-            // ===============================================
+            /*
+             * Send image dimensions as metadata too.
+             *
+             * Backend can verify what it actually received.
+             */
+            form.append(
+              "image_width",
+              String(
+                result.output.width
+              )
+            );
+
+            form.append(
+              "image_height",
+              String(
+                result.output.height
+              )
+            );
+
+            form.append(
+              "image_source_width",
+              String(
+                result.source.width
+              )
+            );
+
+            form.append(
+              "image_source_height",
+              String(
+                result.source.height
+              )
+            );
 
             console.log(
               "Sending face:",
@@ -1257,24 +1038,37 @@ export default function LiveAttendanceCard({
                     100
                   ).toFixed(1)}%`,
 
-                crop:
-                  result.crop,
+                image:
+                  `${result.output.width}x${result.output.height}`,
+
+                source:
+                  `${result.source.width}x${result.source.height}`,
+
+                aspect:
+                  (
+                    result.output.width /
+                    result.output.height
+                  ).toFixed(3),
 
                 blobSize:
-                  result.blob.size,
+                  `${(
+                    result.blob.size /
+                    1024
+                  ).toFixed(1)} KB`,
               }
             );
 
-            // ===============================================
-            // BACKEND
-            // ===============================================
+            // =================================================
+            // API
+            // =================================================
 
             try {
               const response =
                 await fetch(
                   SEARCH_URL,
                   {
-                    method: "POST",
+                    method:
+                      "POST",
 
                     headers:
                       accessToken
@@ -1282,76 +1076,78 @@ export default function LiveAttendanceCard({
                             Authorization:
                               `Bearer ${accessToken}`,
                           }
-                        : {},
+                        : undefined,
 
-                    body: form,
+                    body:
+                      form,
                   }
                 );
 
-              // =============================================
-              // UNKNOWN FACE
-              // =============================================
+              // ===============================================
+              // SERVER ERROR
+              // ===============================================
 
               if (
-                response.status ===
-                  404 ||
-                response.status ===
-                  422
+                !response.ok
               ) {
-                console.log(
-                  `Face ${
-                    index + 1
-                  }: unknown`
+                const message =
+                  await getApiErrorMessage(
+                    response
+                  );
+
+                /*
+                 * 404 = unknown face.
+                 *
+                 * Don't spam toast for every
+                 * unknown face.
+                 */
+                if (
+                  response.status !==
+                  404
+                ) {
+                  toast.error(
+                    `${response.status}: ${message}`
+                  );
+                }
+
+                console.warn(
+                  "Attendance rejected:",
+                  response.status,
+                  message
                 );
 
                 continue;
               }
 
-              // =============================================
-              // SERVER ERROR
-              // =============================================
-
-              if (!response.ok) {
-                console.error(
-                  `Face ${
-                    index + 1
-                  } recognition failed:`,
-                  response.status
-                );
-                toast.error(`Recognition failed due to ${response.status}`);
-                continue;
-              }
-
-              // =============================================
-              // RESPONSE
-              // =============================================
+              // ===============================================
+              // SUCCESS
+              // ===============================================
 
               const apiResult =
                 await response.json();
 
-              if (
-                !apiResult?.student_id
-              ) {
-                console.log(
-                  `Face ${
-                    index + 1
-                  }: no student`
+              const id =
+                String(
+                  apiResult.student_id ||
+                    apiResult.id ||
+                    ""
+                );
+
+              if (!id) {
+                console.warn(
+                  "Backend returned no student ID:",
+                  apiResult
                 );
 
                 continue;
               }
 
-              const id =
-                String(
-                  apiResult.student_id
-                );
-
               const now =
                 Date.now();
 
-              // =============================================
+              // ===============================================
               // DUPLICATE PROTECTION
-              // =============================================
+              // ===============================================
 
               const previous =
                 recognizedStudentsRef.current.get(
@@ -1364,7 +1160,9 @@ export default function LiveAttendanceCard({
                   previous <
                   DETAIL_TIME
               ) {
-                toast.warn(`duplicate Student Found : ${id}`)
+                console.log(
+                  `Duplicate student ignored: ${id}`
+                );
 
                 continue;
               }
@@ -1374,9 +1172,10 @@ export default function LiveAttendanceCard({
                 now
               );
 
-              /*
-               * Cleanup old map entries.
-               */
+              // ===============================================
+              // CLEAN OLD IDS
+              // ===============================================
+
               for (
                 const [
                   oldId,
@@ -1394,19 +1193,9 @@ export default function LiveAttendanceCard({
                 }
               }
 
-              // =============================================
-              // LAST STUDENT
-              // =============================================
-
-              lastStudentRef.current =
-                id;
-
-              lastTimeRef.current =
-                now;
-
-              // =============================================
-              // SHOW STUDENT
-              // =============================================
+              // ===============================================
+              // STUDENT
+              // ===============================================
 
               setStudent(
                 apiResult
@@ -1416,15 +1205,19 @@ export default function LiveAttendanceCard({
                 true
               );
 
+              // ===============================================
+              // HIDE AFTER 3 SEC
+              // ===============================================
+
               if (
-                timerRef.current
+                studentTimerRef.current
               ) {
                 clearTimeout(
-                  timerRef.current
+                  studentTimerRef.current
                 );
               }
 
-              timerRef.current =
+              studentTimerRef.current =
                 window.setTimeout(
                   () => {
                     setShowStudent(
@@ -1434,13 +1227,33 @@ export default function LiveAttendanceCard({
                   DETAIL_TIME
                 );
 
-              // =============================================
+              // ===============================================
               // CALLBACK
-              // =============================================
+              // ===============================================
 
               onAttendanceDetected?.(
                 apiResult
               );
+
+              // ===============================================
+              // TOAST
+              // ===============================================
+
+              if (
+                String(
+                  apiResult.status
+                )
+                  .toLowerCase() ===
+                "already present"
+              ) {
+                toast.success(
+                  `${apiResult.name} is already present`
+                );
+              } else {
+                toast.success(
+                  `Attendance marked: ${apiResult.name}`
+                );
+              }
 
               console.log(
                 `Face ${
@@ -1466,15 +1279,9 @@ export default function LiveAttendanceCard({
           processingFaceRef.current =
             false;
 
-          runningRef.current =
-            false;
-
-          setScanning(false);
-
-          /*
-           * If faces are still present,
-           * next interval will process them again.
-           */
+          setScanning(
+            false
+          );
         }
       },
       [
@@ -1483,12 +1290,14 @@ export default function LiveAttendanceCard({
         databaseOnline,
         faceEngineReady,
         createFaceCrop,
+        addCapturedFace,
+        getApiErrorMessage,
         onAttendanceDetected,
       ]
     );
 
   // =========================================================
-  // RECOGNITION STARTER
+  // RECOGNITION TIMER
   // =========================================================
 
   useEffect(() => {
@@ -1500,13 +1309,7 @@ export default function LiveAttendanceCard({
       return;
     }
 
-    /*
-     * Check every 700ms.
-     *
-     * If multiple faces are available,
-     * recognize() sends all of them.
-     */
-    const interval =
+    recognitionTimerRef.current =
       window.setInterval(
         () => {
           if (
@@ -1517,13 +1320,20 @@ export default function LiveAttendanceCard({
             recognize();
           }
         },
-        700
+        RECOGNITION_INTERVAL
       );
 
     return () => {
-      clearInterval(
-        interval
-      );
+      if (
+        recognitionTimerRef.current
+      ) {
+        clearInterval(
+          recognitionTimerRef.current
+        );
+
+        recognitionTimerRef.current =
+          null;
+      }
     };
   }, [
     cameraOnline,
@@ -1538,54 +1348,43 @@ export default function LiveAttendanceCard({
 
   useEffect(() => {
     if (
-      !cameraOnline ||
-      !databaseOnline
+      cameraOnline &&
+      databaseOnline
     ) {
-      faceDetectedRef.current =
-        false;
-
-      faceBoxRef.current =
-        null;
-
-      faceBoxesRef.current =
-        [];
-
-      faceConfidenceRef.current =
-        0;
-
-      processingFaceRef.current =
-        false;
-
-      runningRef.current =
-        false;
-
-      recognizedStudentsRef.current.clear();
-
-      setDetectedFaces([]);
-
-      setFaceDetected(
-        false
-      );
-
-      setFaceConfidence(
-        0
-      );
-
-      setScanning(
-        false
-      );
-
-      if (
-        timerRef.current
-      ) {
-        clearTimeout(
-          timerRef.current
-        );
-
-        timerRef.current =
-          null;
-      }
+      return;
     }
+
+    faceBoxesRef.current =
+      [];
+
+    faceDetectedRef.current =
+      false;
+
+    faceConfidenceRef.current =
+      0;
+
+    processingFaceRef.current =
+      false;
+
+    recognizedStudentsRef.current.clear();
+
+    setDetectedFaces([]);
+
+    setFaceDetected(
+      false
+    );
+
+    setFaceConfidence(
+      0
+    );
+
+    setScanning(
+      false
+    );
+
+    setShowStudent(
+      false
+    );
   }, [
     cameraOnline,
     databaseOnline,
@@ -1598,14 +1397,19 @@ export default function LiveAttendanceCard({
   useEffect(() => {
     return () => {
       if (
-        timerRef.current
+        studentTimerRef.current
       ) {
         clearTimeout(
-          timerRef.current
+          studentTimerRef.current
         );
+      }
 
-        timerRef.current =
-          null;
+      if (
+        recognitionTimerRef.current
+      ) {
+        clearInterval(
+          recognitionTimerRef.current
+        );
       }
 
       if (
@@ -1614,14 +1418,22 @@ export default function LiveAttendanceCard({
         cancelAnimationFrame(
           faceLoopRef.current
         );
-
-        faceLoopRef.current =
-          null;
       }
 
-      /*
-       * Revoke captured preview URLs.
-       */
+      // -------------------------------------------------------
+      // Captured URLs
+      // -------------------------------------------------------
+
+      capturedTimeoutsRef.current.forEach(
+        (timeoutId) => {
+          clearTimeout(
+            timeoutId
+          );
+        }
+      );
+
+      capturedTimeoutsRef.current.clear();
+
       setCapturedFaces(
         (current) => {
           current.forEach(
@@ -1638,6 +1450,10 @@ export default function LiveAttendanceCard({
         }
       );
 
+      // -------------------------------------------------------
+      // Detector
+      // -------------------------------------------------------
+
       if (
         faceDetectorRef.current
       ) {
@@ -1649,16 +1465,29 @@ export default function LiveAttendanceCard({
           null;
       }
 
+      // -------------------------------------------------------
+      // Camera
+      // -------------------------------------------------------
+
       if (
         streamRef.current
       ) {
         streamRef.current
           .getTracks()
-          .forEach((track) =>
-            track.stop()
+          .forEach(
+            (track) =>
+              track.stop()
           );
 
         streamRef.current =
+          null;
+      }
+
+      const video =
+        videoRef.current;
+
+      if (video) {
+        video.srcObject =
           null;
       }
     };
@@ -1706,7 +1535,8 @@ export default function LiveAttendanceCard({
 
   const alreadyPresent =
     String(status)
-      .toLowerCase() ===
+      .toLowerCase()
+      .trim() ===
     "already present";
 
   // =========================================================
@@ -1715,15 +1545,10 @@ export default function LiveAttendanceCard({
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
-
-      {/* ===================================================
-          HEADER
-      =================================================== */}
+      {/* HEADER */}
 
       <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2.5">
-
         <div className="flex items-center gap-2">
-
           <ScanFace className="h-4 w-4 text-cyan-400" />
 
           <div>
@@ -1735,15 +1560,10 @@ export default function LiveAttendanceCard({
               Multi Face Recognition
             </p>
           </div>
-
         </div>
 
         <div className="flex gap-3 text-[7px]">
-
-          {/* DATABASE */}
-
           <span className="flex items-center gap-1">
-
             <StatusDot
               active={
                 databaseOnline
@@ -1753,13 +1573,9 @@ export default function LiveAttendanceCard({
             {databaseOnline
               ? "DATABASE"
               : "OFFLINE"}
-
           </span>
 
-          {/* CAMERA */}
-
           <span className="flex items-center gap-1">
-
             <StatusDot
               active={
                 cameraOnline
@@ -1769,13 +1585,9 @@ export default function LiveAttendanceCard({
             {cameraOnline
               ? "CAMERA"
               : "OFFLINE"}
-
           </span>
 
-          {/* AI */}
-
           <span className="flex items-center gap-1">
-
             <StatusDot
               active={
                 faceEngineReady
@@ -1785,19 +1597,13 @@ export default function LiveAttendanceCard({
             {faceEngineReady
               ? "AI READY"
               : "AI OFFLINE"}
-
           </span>
-
         </div>
-
       </div>
 
-      {/* ===================================================
-          CAMERA
-      =================================================== */}
+      {/* CAMERA */}
 
-      <div className="relative min-h-[390px] bg-black">
-
+      <div className="relative min-h-[390px] overflow-hidden bg-black">
         <video
           ref={videoRef}
           autoPlay
@@ -1806,38 +1612,37 @@ export default function LiveAttendanceCard({
           className="absolute inset-0 h-full w-full object-cover"
         />
 
-        {/* =================================================
-            CAPTURED FACES
-        ================================================= */}
+        {/* CAPTURED FACES */}
 
         {capturedFaces.length >
           0 && (
           <div className="absolute left-3 top-3 z-30 flex max-w-[calc(100%-24px)] gap-2 overflow-x-auto pb-1">
-
             {capturedFaces.map(
               (face) => (
                 <div
-                  key={face.id}
+                  key={
+                    face.id
+                  }
                   className="shrink-0 overflow-hidden rounded-lg border border-cyan-400/50 bg-slate-950/95 shadow-2xl"
                 >
-
                   <div className="border-b border-cyan-400/20 bg-slate-900 px-2 py-1">
-
                     <p className="text-[7px] font-semibold uppercase tracking-wider text-cyan-300">
                       Face{" "}
-                      {face.index}
+                      {
+                        face.index
+                      }
                     </p>
-
                   </div>
 
                   <img
-                    src={face.url}
+                    src={
+                      face.url
+                    }
                     alt={`Captured face ${face.index}`}
                     className="h-24 w-[76px] object-cover"
                   />
 
                   <div className="flex items-center justify-center gap-1 border-t border-slate-800 px-2 py-1">
-
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
 
                     <span className="text-[6px] font-semibold text-emerald-300">
@@ -1849,28 +1654,23 @@ export default function LiveAttendanceCard({
                       )}
                       %
                     </span>
-
                   </div>
-
                 </div>
               )
             )}
-
           </div>
         )}
 
-        {/* =================================================
-            HIDDEN CANVAS
-        ================================================= */}
+        {/* HIDDEN CANVAS */}
 
         <canvas
-          ref={canvasRef}
+          ref={
+            canvasRef
+          }
           className="hidden"
         />
 
-        {/* =================================================
-            CAMERA OFFLINE
-        ================================================= */}
+        {/* CAMERA OFFLINE */}
 
         {!cameraOnline && (
           <Overlay
@@ -1880,14 +1680,12 @@ export default function LiveAttendanceCard({
             title="Camera Offline"
             text={
               cameraError ||
-              "Camera permission required"
+              "Camera permission required."
             }
           />
         )}
 
-        {/* =================================================
-            DATABASE OFFLINE
-        ================================================= */}
+        {/* DATABASE OFFLINE */}
 
         {cameraOnline &&
           !databaseOnline && (
@@ -1896,13 +1694,11 @@ export default function LiveAttendanceCard({
                 <Wifi className="h-8 w-8 text-red-400" />
               }
               title="Database Offline"
-              text="Recognition paused"
+              text="Recognition paused."
             />
           )}
 
-        {/* =================================================
-            AI LOADING
-        ================================================= */}
+        {/* AI LOADING */}
 
         {cameraOnline &&
           databaseOnline &&
@@ -1919,29 +1715,28 @@ export default function LiveAttendanceCard({
             />
           )}
 
-        {/* =================================================
-            ALL FACE BOXES
-        ================================================= */}
+        {/* FACE BOXES */}
 
         {cameraOnline &&
           databaseOnline &&
           faceEngineReady && (
             <FaceBoxes
-              videoRef={videoRef}
-              faces={detectedFaces}
+              videoRef={
+                videoRef
+              }
+              faces={
+                detectedFaces
+              }
             />
           )}
 
-        {/* =================================================
-            FACE STATUS
-        ================================================= */}
+        {/* FACE STATUS */}
 
         {cameraOnline &&
           databaseOnline &&
           faceEngineReady &&
           !showStudent && (
             <div className="absolute left-1/2 top-4 z-20 -translate-x-1/2">
-
               <div
                 className={`rounded-full border px-3 py-1.5 ${
                   faceDetected
@@ -1949,9 +1744,7 @@ export default function LiveAttendanceCard({
                     : "border-slate-700 bg-black/60"
                 }`}
               >
-
                 <div className="flex items-center gap-2">
-
                   <span
                     className={`h-1.5 w-1.5 rounded-full ${
                       faceDetected
@@ -1968,9 +1761,7 @@ export default function LiveAttendanceCard({
                     }`}
                   >
                     {faceDetected
-                      ? `${
-                          detectedFaces.length
-                        } PERSON${
+                      ? `${detectedFaces.length} PERSON${
                           detectedFaces.length !==
                           1
                             ? "S"
@@ -1983,17 +1774,12 @@ export default function LiveAttendanceCard({
                         )}%`
                       : "WAITING FOR PERSON"}
                   </span>
-
                 </div>
-
               </div>
-
             </div>
           )}
 
-        {/* =================================================
-            MULTI FACE COUNT
-        ================================================= */}
+        {/* FACE COUNT */}
 
         {cameraOnline &&
           databaseOnline &&
@@ -2001,59 +1787,52 @@ export default function LiveAttendanceCard({
           detectedFaces.length >
             0 && (
             <div className="absolute right-3 top-3 z-20 rounded-lg border border-emerald-400/30 bg-black/70 px-2 py-1.5">
-
               <div className="flex items-center gap-1.5">
-
                 <ScanFace className="h-3 w-3 text-emerald-400" />
 
                 <span className="text-[7px] font-semibold text-emerald-300">
-                  {detectedFaces.length}{" "}
+                  {
+                    detectedFaces.length
+                  }{" "}
                   FACE
                   {detectedFaces.length !==
                   1
                     ? "S"
                     : ""}
                 </span>
-
               </div>
-
             </div>
           )}
 
-        {/* =================================================
-            STUDENT RESULT
-        ================================================= */}
+        {/* STUDENT RESULT */}
 
         {showStudent &&
           student && (
             <div className="absolute bottom-4 left-1/2 z-20 w-[92%] max-w-lg -translate-x-1/2">
-
               <div className="rounded-xl border border-emerald-400/30 bg-slate-950/95 p-3 shadow-xl">
-
                 <div className="flex items-center gap-3">
-
                   {/* IMAGE */}
 
                   {imageUrl ? (
                     <img
-                      src={imageUrl}
-                      alt={name}
+                      src={
+                        imageUrl
+                      }
+                      alt={
+                        name
+                      }
                       className="h-14 w-14 rounded-lg object-cover"
                     />
                   ) : (
                     <div className="grid h-14 w-14 place-items-center rounded-lg bg-emerald-400/10">
-
                       <UserCheck className="h-7 w-7 text-emerald-400" />
-
                     </div>
                   )}
 
                   {/* INFO */}
 
                   <div className="min-w-0 flex-1">
-
                     <div className="flex items-center gap-2">
-
                       <CheckCircle2
                         className={`h-4 w-4 ${
                           alreadyPresent
@@ -2063,29 +1842,30 @@ export default function LiveAttendanceCard({
                       />
 
                       <p className="truncate text-[11px] font-semibold text-white">
-                        {name}
+                        {
+                          name
+                        }
                       </p>
-
                     </div>
 
                     <div className="mt-1 flex gap-2">
-
                       <span className="font-mono text-[7px] text-slate-500">
-                        {studentId}
+                        {
+                          studentId
+                        }
                       </span>
 
                       <span className="text-[7px] text-cyan-300">
-                        {course}
+                        {
+                          course
+                        }
                       </span>
-
                     </div>
-
                   </div>
 
                   {/* STATUS */}
 
                   <div className="text-right">
-
                     <p className="text-[6px] text-slate-600">
                       STATUS
                     </p>
@@ -2097,17 +1877,16 @@ export default function LiveAttendanceCard({
                           : "text-emerald-400"
                       }`}
                     >
-                      {status.toUpperCase()}
+                      {String(
+                        status
+                      ).toUpperCase()}
                     </p>
-
                   </div>
-
                 </div>
 
                 {/* METRICS */}
 
                 <div className="mt-3 grid grid-cols-3 border-t border-slate-800 pt-2">
-
                   <SmallMetric
                     label="Confidence"
                     value={
@@ -2136,28 +1915,24 @@ export default function LiveAttendanceCard({
                       "—"
                     }
                   />
-
                 </div>
-
               </div>
-
             </div>
           )}
 
-        {/* =================================================
-            RECOGNIZING
-        ================================================= */}
+        {/* RECOGNIZING */}
 
         {scanning &&
           cameraOnline &&
           databaseOnline && (
             <div className="absolute bottom-3 right-3 z-30 flex items-center gap-1 rounded bg-black/70 px-2 py-1">
-
               <Wifi className="h-3 w-3 animate-pulse text-cyan-400" />
 
               <span className="text-[7px] text-slate-400">
                 Recognizing{" "}
-                {detectedFaces.length}{" "}
+                {
+                  detectedFaces.length
+                }{" "}
                 face
                 {detectedFaces.length !==
                 1
@@ -2165,18 +1940,13 @@ export default function LiveAttendanceCard({
                   : ""}
                 ...
               </span>
-
             </div>
           )}
-
       </div>
 
-      {/* ===================================================
-          FOOTER
-      =================================================== */}
+      {/* FOOTER */}
 
       <div className="grid grid-cols-4 border-t border-slate-800">
-
         <Metric
           icon={Camera}
           label="Camera"
@@ -2188,7 +1958,9 @@ export default function LiveAttendanceCard({
         />
 
         <Metric
-          icon={Fingerprint}
+          icon={
+            Fingerprint
+          }
           label="Engine"
           value={
             databaseOnline &&
@@ -2199,15 +1971,21 @@ export default function LiveAttendanceCard({
         />
 
         <Metric
-          icon={ShieldCheck}
+          icon={
+            ShieldCheck
+          }
           label="Faces"
           value={
             detectedFaces.length >
             0
-              ? `${detectedFaces.length} • ${(
+              ? `${
+                  detectedFaces.length
+                } • ${(
                   faceConfidence *
                   100
-                ).toFixed(0)}%`
+                ).toFixed(
+                  0
+                )}%`
               : "—"
           }
         />
@@ -2219,7 +1997,6 @@ export default function LiveAttendanceCard({
             time
           )}
         />
-
       </div>
     </section>
   );
@@ -2236,7 +2013,10 @@ function FaceBoxes({
   const video =
     videoRef.current;
 
-  if (!video || !faces?.length) {
+  if (
+    !video ||
+    !faces?.length
+  ) {
     return null;
   }
 
@@ -2246,48 +2026,101 @@ function FaceBoxes({
   const videoHeight =
     video.videoHeight || 1;
 
-  return (
-    <div className="pointer-events-none absolute inset-0 z-10">
+  /*
+   * The video uses object-cover.
+   *
+   * Raw camera coordinates need to be
+   * mapped to the displayed video.
+   */
 
+  return (
+    <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
       {faces.map(
-        (face, index) => {
-          /*
-           * MediaPipe gives coordinates in
-           * original video pixels.
-           *
-           * Convert to percentage for overlay.
-           */
+        (
+          face,
+          index
+        ) => {
+          const containerWidth =
+            video.clientWidth ||
+            1;
+
+          const containerHeight =
+            video.clientHeight ||
+            1;
+
+          const videoAspect =
+            videoWidth /
+            videoHeight;
+
+          const containerAspect =
+            containerWidth /
+            containerHeight;
+
+          let renderedWidth =
+            containerWidth;
+
+          let renderedHeight =
+            containerHeight;
+
+          let offsetX = 0;
+          let offsetY = 0;
+
+          if (
+            videoAspect >
+            containerAspect
+          ) {
+            renderedHeight =
+              containerHeight;
+
+            renderedWidth =
+              renderedHeight *
+              videoAspect;
+
+            offsetX =
+              (containerWidth -
+                renderedWidth) /
+              2;
+          } else {
+            renderedWidth =
+              containerWidth;
+
+            renderedHeight =
+              renderedWidth /
+              videoAspect;
+
+            offsetY =
+              (containerHeight -
+                renderedHeight) /
+              2;
+          }
+
           const left =
-            `${
-              (face.x /
-                videoWidth) *
-              100
-            }%`;
+            offsetX +
+            (face.x /
+              videoWidth) *
+              renderedWidth;
 
           const top =
-            `${
-              (face.y /
-                videoHeight) *
-              100
-            }%`;
+            offsetY +
+            (face.y /
+              videoHeight) *
+              renderedHeight;
 
           const width =
-            `${
-              (face.width /
-                videoWidth) *
-              100
-            }%`;
+            (face.width /
+              videoWidth) *
+            renderedWidth;
 
           const height =
-            `${
-              (face.height /
-                videoHeight) *
-              100
-            }%`;
+            (face.height /
+              videoHeight) *
+            renderedHeight;
 
           return (
             <div
-              key={face.id}
+              key={
+                face.id
+              }
               className="absolute"
               style={{
                 left,
@@ -2296,7 +2129,6 @@ function FaceBoxes({
                 height,
               }}
             >
-
               {/* TOP LEFT */}
 
               <div className="absolute left-0 top-0 h-7 w-7 border-l-2 border-t-2 border-emerald-400" />
@@ -2316,18 +2148,16 @@ function FaceBoxes({
               {/* FACE NUMBER */}
 
               <div className="absolute -top-5 left-0 rounded bg-emerald-500 px-1.5 py-0.5 shadow">
-
                 <span className="text-[7px] font-bold text-black">
                   FACE{" "}
-                  {index + 1}
+                  {index +
+                    1}
                 </span>
-
               </div>
 
               {/* CONFIDENCE */}
 
               <div className="absolute -bottom-5 left-0 rounded bg-black/80 px-1.5 py-0.5">
-
                 <span className="text-[7px] font-semibold text-emerald-300">
                   {(
                     face.confidence *
@@ -2337,14 +2167,11 @@ function FaceBoxes({
                   )}
                   %
                 </span>
-
               </div>
-
             </div>
           );
         }
       )}
-
     </div>
   );
 }
@@ -2360,21 +2187,17 @@ function Metric({
 }) {
   return (
     <div className="border-r border-slate-800 p-2.5 last:border-0">
-
       <div className="flex items-center gap-1">
-
         <Icon className="h-3 w-3 text-slate-600" />
 
         <span className="text-[7px] text-slate-600">
           {label}
         </span>
-
       </div>
 
       <p className="mt-1 text-[8px] font-semibold text-cyan-300">
         {value}
       </p>
-
     </div>
   );
 }
@@ -2389,7 +2212,6 @@ function SmallMetric({
 }) {
   return (
     <div>
-
       <p className="text-[6px] uppercase text-slate-600">
         {label}
       </p>
@@ -2397,7 +2219,6 @@ function SmallMetric({
       <p className="mt-0.5 text-[8px] font-semibold text-slate-300">
         {value}
       </p>
-
     </div>
   );
 }
@@ -2413,9 +2234,7 @@ function Overlay({
 }) {
   return (
     <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/60">
-
       <div className="max-w-sm px-4 text-center">
-
         {icon}
 
         <p className="mt-2 text-xs font-semibold text-slate-300">
@@ -2425,18 +2244,18 @@ function Overlay({
         <p className="mt-1 break-words text-[8px] text-slate-600">
           {text}
         </p>
-
       </div>
-
     </div>
   );
 }
 
 // =========================================================
-// TIME FORMAT
+// TIME
 // =========================================================
 
-function formatTime(value) {
+function formatTime(
+  value
+) {
   if (!value) {
     return "—";
   }

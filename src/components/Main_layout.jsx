@@ -3,14 +3,10 @@ import Topbar from "./layouts/Topbar";
 import { Footer } from "./layouts/Footer";
 import HomePage from "../pages/HomePage";
 
-const Main_layout = ({ isLoggedIn, onLogin,onLogout,bg }) => {
+const Main_layout = ({ bg }) => {
   return (
     <>
-      <Topbar
-        isLoggedIn={isLoggedIn}
-        onLogin={onLogin}
-        onLogout={onLogout} 
-      /> 
+      <Topbar /> 
       <HomePage />
       <Footer />
     </>

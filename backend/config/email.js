@@ -403,6 +403,68 @@ SmartCampus Team
   }
 }
 
+// Email pdf sending
+async function sendPdfEmail(toEmail, pdfPath, studentName = "Student") {
+  try {
+    const info = await transporter.sendMail({
+      from: `"SmartCampus" <${process.env.SMTP_FROM}>`,
+      to: toEmail,
+      subject: "Cyber Security PDF Document ",
+
+      text: `
+Hello ${studentName},
+
+Please find your SmartCampus PDF document attached with this email.
+
+Regards,
+SmartCampus Team
+      `,
+
+      html: `
+        <div style="font-family: Arial; max-width: 600px; margin: auto;">
+          <h2 style="background:#2563eb; color:white; padding:20px;">
+            SmartCampus
+          </h2>
+          <div style="padding:25px; border:1px solid #ddd;">
+            <h3>Your PDF Document</h3>
+
+            <p>Hello <strong>${studentName}</strong>,</p>
+
+            <p>
+              Your SmartCampus document has been generated successfully.
+            </p>
+
+            <p>
+              Please find the PDF attached to this email.
+            </p>
+
+            <p>
+              Regards,<br>
+              <strong>SmartCampus Team</strong>
+            </p>
+          </div>
+        </div>
+      `,
+
+      // 🔥 PDF directly attached to email
+      attachments: [
+        {
+          filename: `${studentName}.pdf`,
+          path: pdfPath,
+          contentType: "application/pdf",
+        },
+      ],
+    });
+
+    console.log("✅ PDF sent:", info.messageId);
+
+    return info;
+
+  } catch (error) {
+    console.error("❌ PDF email failed:", error.message);
+    throw error;
+  }
+}
 
 /*
 |--------------------------------------------------------------------------
@@ -413,4 +475,5 @@ SmartCampus Team
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendPdfEmail
 };

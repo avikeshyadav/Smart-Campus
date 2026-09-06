@@ -4,10 +4,7 @@ import React, {
   useMemo,
   useState,
 } from "react";
-
 import { motion, AnimatePresence } from "framer-motion";
-import DashboardShell from "../DashboardShell";
-
 import {
   CheckCircle2,
   ChevronDown,
@@ -315,7 +312,7 @@ function normalizeAttendanceResponse(response) {
       student.attendanceStatus ??
       student.attendance_status ??
       student.attendance ??
-      "Present",
+      (student.attendance_id ? "Present" : "Absent"),
   }));
 
   return {
@@ -880,7 +877,7 @@ export default function AttendanceOverview({
   const [selectedStudent, setSelectedStudent] =
     useState(null);
 
-  const [currentPage, setCurrentPage] =
+  const [currentPage, setCurrentPage] = 
     useState(1);
 
   const [pageSize, setPageSize] =
@@ -1320,7 +1317,7 @@ export default function AttendanceOverview({
 
   if (loading) {
     return (
-      <DashboardShell title="Attendance Monitoring">
+      <>
         <div
           className="
             flex min-h-[300px]
@@ -1339,12 +1336,12 @@ export default function AttendanceOverview({
             </span>
           </div>
         </div>
-      </DashboardShell>
+      </>
     );
   }
 
   return (
-    <DashboardShell title="Attendance Monitoring">
+    <>
       <motion.section
         layout
         initial={{
@@ -2989,7 +2986,7 @@ export default function AttendanceOverview({
           }
         />
       )}
-    </DashboardShell>
+    </>
   );
 }
 

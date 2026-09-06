@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import DashboardShell from "../DashboardShell";
+
 import {
   BarChart3,
   CalendarDays,
@@ -62,7 +62,7 @@ export default function ReportsAnalytics({
   ];
 
   return (
-    <DashboardShell title={"Academic Reports"}>
+    <>
     <section className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-800/90 bg-[radial-gradient(circle_at_50%_0%,rgba(41,59,103,.17),transparent_42%),linear-gradient(145deg,#071321,#091827_55%,#07111e)] p-2.5 text-white shadow-[0_20px_55px_rgba(0,0,0,.36)]">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
@@ -201,6 +201,6 @@ export default function ReportsAnalytics({
         )}
       </AnimatePresence>
     </section>
-    </DashboardShell>
+    </>
   );
 }

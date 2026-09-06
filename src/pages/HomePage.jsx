@@ -10,8 +10,8 @@ const HomePage = () => {
   return (
     <main className={`min-h-screen ${bgColor.body}`}>
       <HeroSection bgColor={bgColor} />
-      <ServicesSection bgColor={bgColor} />
       <ProductsSection bgColor={bgColor} />
+      <ServicesSection bgColor={bgColor} />
       <AboutSection bgColor={bgColor} />
       <ContactSection bgColor={bgColor} />
     </main>

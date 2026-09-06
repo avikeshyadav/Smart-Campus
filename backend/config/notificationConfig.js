@@ -11,7 +11,7 @@ const createNotification = async ({
 }) => {
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
-  const [result] = await db.query(
+  const [result] = await db.promise().query(
     `
     INSERT INTO notifications (
       user_id,

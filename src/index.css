@@ -1,69 +1,169 @@
 @import url('https://fonts.googleapis.com/css2?family=Saira:ital,wght@0,100..900;1,100..900&display=swap');
 @import "tailwindcss";
 
-*{
-  font-family: 'Saira', sans-serif;
+/* ================================
+   GLOBAL STYLES
+================================ */
+
+:root {
+  font-family: "Saira", sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  font-family: "Saira", sans-serif;
+  background: #020617;
+  color: #f8fafc;
+}
+
+
+/* ================================
+   TAILWIND CUSTOM THEME
+================================ */
+
 @theme {
   --color-primary: #3b82f6;
   --color-secondary: #10b981;
   --color-accent: #f59e0b;
+
   --color-success: #22c55e;
   --color-warning: #eab308;
   --color-danger: #ef4444;
   --color-info: #06b6d4;
+
   --color-light: #f8fafc;
   --color-dark: #1f2937;
 
-   --color-red: #ef4444;
+  /* Red → Orange */
+  --color-red: #ef4444;
   --color-orange: #f97316;
   --color-amber: #f59e0b;
   --color-yellow: #eab308;
+
+  /* Green */
   --color-lime: #84cc16;
   --color-green: #22c55e;
   --color-emerald: #10b981;
   --color-teal: #14b8a6;
+
+  /* Blue */
   --color-cyan: #06b6d4;
   --color-sky: #0ea5e9;
   --color-blue: #3b82f6;
   --color-indigo: #6366f1;
+
+  /* Purple */
   --color-violet: #8b5cf6;
   --color-purple: #a855f7;
 }
-.typeriter {
-  overflow: hidden;
-  border-right: 0.15em solid green;
-  white-space: nowrap;
-  width: 0;
+
+
+/* ================================
+   TYPEWRITER EFFECT
+================================ */
+
+.typewriter {
+  display: inline-flex;
   align-items: center;
-  animation: typing 3s steps(20, end), forwards,blink-caret 0.75s step-end 4;
+
+  width: 0;
+  overflow: hidden;
+
+  white-space: nowrap;
+  border-right: 3px solid #22c55e;
+
+  animation:
+    typing 3s steps(20, end) forwards,
+    blink-caret 0.75s step-end 4;
 }
 
+
+/* Typing Animation */
 @keyframes typing {
   from {
     width: 0;
   }
+
   to {
     width: 17ch;
   }
-} 
+}
+
+
+/* Cursor Animation */
 @keyframes blink-caret {
-  from, to {
+  0%,
+  100% {
     border-color: transparent;
   }
+
   50% {
-    border-color: green;
+    border-color: #22c55e;
   }
 }
 
-/* Hide Scrollbar */
+
+/* ================================
+   MODERN TYPEWRITER VARIANT
+================================ */
+
+.typewriter-glow {
+  display: inline-flex;
+  align-items: center;
+
+  width: 0;
+  overflow: hidden;
+
+  white-space: nowrap;
+
+  color: #22c55e;
+  border-right: 3px solid #22c55e;
+
+  text-shadow:
+    0 0 8px rgba(34, 197, 94, 0.7),
+    0 0 20px rgba(34, 197, 94, 0.4);
+
+  animation:
+    typing 3s steps(20, end) forwards,
+    blink-caret 0.75s step-end 4;
+}
+
+
+/* ================================
+   CUSTOM SCROLLBAR
+================================ */
+
+.custom-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: #0891b2 transparent;
+}
+
+
+/* Chrome / Edge / Safari */
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
+  height: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: rgba(255,255,255,.04);
-  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
@@ -72,7 +172,13 @@
     #22d3ee,
     #0891b2
   );
-  border-radius: 20px;
+
+  border-radius: 999px;
+
+  border: 2px solid transparent;
+  background-clip: padding-box;
+
+  transition: background 0.3s ease;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
@@ -81,4 +187,64 @@
     #67e8f9,
     #06b6d4
   );
+
+  background-clip: padding-box;
+}
+
+
+/* ================================
+   SELECTION
+================================ */
+
+::selection {
+  color: #ffffff;
+  background: rgba(6, 182, 212, 0.8);
+}
+
+
+/* ================================
+   FOCUS
+================================ */
+
+:focus-visible {
+  outline: 2px solid #22d3ee;
+  outline-offset: 3px;
+}
+
+
+/* ================================
+   SMOOTH TRANSITIONS
+================================ */
+
+button,
+a,
+input,
+textarea,
+select {
+  transition:
+    color 0.2s ease,
+    background-color 0.2s ease,
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+
+/* ================================
+   REDUCED MOTION
+   Accessibility improvement
+================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

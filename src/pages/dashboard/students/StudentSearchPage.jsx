@@ -394,7 +394,7 @@ const startCamera = async (facing = cameraFacing, deviceId = null) => {
     });
   };
   return (
-    <DashboardShell title="Face Verification">
+<>
       <div className="min-h-screen w-full bg-slate-950 text-white">
         <FaceVerificationHeader
           cameraOn={cameraOn}
@@ -444,7 +444,7 @@ const startCamera = async (facing = cameraFacing, deviceId = null) => {
       </div>
 
       <style>{`\n        @keyframes scan {\n          0% {\n            top: 0%;\n            opacity: 0;\n          }\n          15% { opacity: 1; }\n          50% { top: 50%; opacity: 1; }\n          85% { opacity: 1; }\n          100% { top: 100%; opacity: 0; }\n        }\n      `}</style>
-    </DashboardShell>
+      </>
   );
 };
 

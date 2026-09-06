@@ -62,7 +62,6 @@ const isFlagOn = (value, defaultValue = true) => {
 const Sidebar = () => {
   const { accessToken } = useAuth();
   const location = useLocation();
-
   const [openGroup, setOpenGroup] = useState("");
   const [dashboardNavItems, setDashboardNavItems] = useState([]);
 
@@ -74,7 +73,6 @@ const Sidebar = () => {
     if (path.startsWith("/dashboard")) {
       return path;
     }
-
     return `/dashboard/${path.replace(/^\/+/, "")}`;
   };
 
@@ -113,7 +111,7 @@ const Sidebar = () => {
 
     fetch(`${BASE_URI}/api/dashboard/modules`, {
       method: "GET",
-      headers: {
+      headers: { 
         Authorization: `Bearer ${accessToken}`,
       },
     })
@@ -130,8 +128,6 @@ const Sidebar = () => {
           : [];
 
         setDashboardNavItems(modules);
-
-        console.log("Dashboard modules:", modules);
       })
       .catch((err) => {
         console.log("Dashboard modules error:", err);
@@ -261,7 +257,7 @@ const Sidebar = () => {
                     text-white
                   "
                 >
-                  Student Vision
+                  Smart Campus
                 </h2>
                 
               </div>

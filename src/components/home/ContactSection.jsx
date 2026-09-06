@@ -22,8 +22,6 @@ const ContactSection = () => {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    console.log("Contact Form:", formData);
-
     // Yahan baad mein API call laga sakte ho
     // Example:
     // await axios.post("/api/contact", formData);
@@ -101,7 +99,7 @@ const ContactSection = () => {
                     href="mailto:hello@yourportfolio.com"
                     className="mt-1 block text-sm font-medium text-white hover:text-cyan-400"
                   >
-                    hello@yourportfolio.com
+                    avikeshk47@gmail.com
                   </a>
                 </div>
               </div>
@@ -121,7 +119,7 @@ const ContactSection = () => {
                     href="tel:+919999999999"
                     className="mt-1 block text-sm font-medium text-white hover:text-cyan-400"
                   >
-                    +91 99999 99999
+                    +91 92113 26796
                   </a>
                 </div>
               </div>
@@ -184,7 +182,7 @@ const ContactSection = () => {
                 </a>
 
                 <a
-                  href="#"
+                  href="https://github.com/avikeshyadav/"
                   className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-800 text-sm text-slate-300 transition hover:bg-cyan-500 hover:text-white"
                 >
                   Git

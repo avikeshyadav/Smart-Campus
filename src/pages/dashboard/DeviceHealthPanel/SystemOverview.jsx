@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import DashboardShell from "../DashboardShell";
+
 import {
   Activity,
   AlertTriangle,
@@ -88,7 +88,7 @@ export default function SystemOverview({
   };
 
   return (
-        <DashboardShell title={"System OverView"}>
+    <>
     <section className="w-full min-w-0 overflow-hidden rounded-2xl border border-slate-800/90 bg-[radial-gradient(circle_at_50%_0%,rgba(28,86,102,.18),transparent_45%),linear-gradient(145deg,#071321,#091827_55%,#07111e)] p-2.5 text-white shadow-[0_20px_55px_rgba(0,0,0,.36)]">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center">
@@ -189,6 +189,6 @@ export default function SystemOverview({
         </div>
       </div>
     </section>
-    </DashboardShell>
+    </>
   );
 }

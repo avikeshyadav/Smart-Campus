@@ -23,7 +23,7 @@ const defaultAlerts = [
   {
     id: 2,
     type: "info",
-    title: "Student Not in Class",
+    title: "Student Not in Campus",
     description: "Classroom 102 - 10:45 AM",
     priority: "Medium",
     time: "16m ago",

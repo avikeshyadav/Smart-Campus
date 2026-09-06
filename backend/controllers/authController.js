@@ -2,21 +2,19 @@ const { access } = require("fs");
 const speakeasy = require("speakeasy");
 const QRCode = require("qrcode");
 const db = require("../config/database"); // Import the database connection
-const { hashPassword, comparePassword, generateSecureToken, hashToken } = require('../middleware/hash');
-const { generateAccessToken, generateRefreshToken,generateTemperaryToken,verifyTemperoryToken, verifyRefreshToken } = require('../config/token');
-const { sendVerificationEmail, sendPasswordResetEmail } = require('../config/email');
 const { createNotification } = require("../config/notificationConfig");
+const { sendVerificationEmail, sendPasswordResetEmail } = require('../config/email');
+const { hashPassword, comparePassword, generateSecureToken, hashToken } = require('../middleware/hash');
+const { generateAccessToken, generateRefreshToken,
+        generateTemperaryToken, verifyTemperoryToken, verifyRefreshToken } = require('../config/token');
 const MAX_ATTEMPTS = parseInt(process.env.MAX_LOGIN_ATTEMPTS || '5', 10);
 const LOCK_MINUTES = parseInt(process.env.LOCK_TIME_MINUTES || '15', 10);
 const REFRESH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
 const CAPTCHA_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const crypto = require("crypto");
 
-// ---------------- CAPTCHA ----------------
 const createCaptcha = () => {
-  // const nameList=["avikesh", "ashutosh", "avikesh", "avikesh"];
-  // const random = nameList[Math.floor(Math.random() *nameList.length )];
-  const random = Math.floor(1000 + Math.random() * 9000);
-  return random.toString();
+    return crypto.randomInt(1000, 10000).toString();
 };
 const captchaStore = new Map();
 
@@ -139,8 +137,8 @@ async function register(req, res) {
 
 // ---------------- LOGIN ----------------
 async function login(req, res) {
-  const { email, password, captcha: captchaValue, token, twoFactorCode } = req.body;
-  const ip = req.ip;
+  const { email, password, captcha: captchaValue, token } = req.body;
+  const ip = req.headers["x-forwarded-for"]?.split(",")[0] || req.socket.remoteAddress;
   const userAgent = req.headers['user-agent'] || 'unknown';
   if (!email || !password || !captchaValue || !token) {
     return res.status(400).json({ message: "All fields are required." });
@@ -190,8 +188,8 @@ async function login(req, res) {
 
     // Successful login — reset failed attempts, record history
     await db.promise().query(
-      'UPDATE users SET failed_attempts = 0, lock_until = NULL, last_login = NOW() WHERE id = ?',
-      [user.id]
+      'UPDATE users SET failed_attempts = 0, lock_until = NULL,last_login_location=?,last_login_device=?, last_login = NOW() WHERE id = ?',
+      [ip,userAgent,user.id]
     );
     await db.promise().query(
       'INSERT INTO login_history (user_id, ip_address, user_agent, status) VALUES (?, ?, ?, "SUCCESS")',
@@ -206,12 +204,13 @@ async function login(req, res) {
     await db.promise().query(
       `INSERT INTO refresh_tokens (user_id, token_hash, device_info, ip_address, expires_at,current_access_token)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [user.id, hashToken(refreshToken), userAgent, ip, refreshExpiresAt, accessToken]
+      [user.id, hashToken(refreshToken), userAgent, ip, refreshExpiresAt, hashToken(accessToken)]
     );
 
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      // secure: process.env.NODE_ENV === 'production',
+      secure:true,
       sameSite: 'strict',
       maxAge: REFRESH_MAX_AGE_MS,
     });
@@ -225,7 +224,7 @@ async function login(req, res) {
         role: user?.job_title,
         name: user.name,
         email: user.email,
-        dp: user.avatar_url,
+        avatar_url: user.avatar_url,
         last_login: user.last_login,
       },
     });
@@ -263,17 +262,27 @@ async function refresh(req, res) {
   if (!token) {
     return res.status(401).json({ success: false, message: 'Refresh token missing' });
   }
-
   let decoded;
   try {
     decoded = verifyRefreshToken(token);
   } catch (err) {
-    res.clearCookie('refreshToken');
-    return res.status(403).json({ success: false, message: 'Session expired, please log in again' });
-  }
+    res.clearCookie("refreshToken");
+    if (err.name === "TokenExpiredError") {
+        return res.status(401).json({
+            success: false,
+            code: "REFRESH_TOKEN_EXPIRED",
+            message: "Session expired. Please login again."
+        });
+    }
+
+    return res.status(401).json({
+        success: false,
+        code: "INVALID_REFRESH_TOKEN",
+        message: "Invalid session. Please login again."
+    });
+}
 
   const tokenHash = hashToken(token);
-
   try {
     const [rows] = await db.promise().query(
       'SELECT * FROM refresh_tokens WHERE token_hash = ? AND user_id = ? AND is_revoked = FALSE AND expires_at > NOW()',
@@ -304,7 +313,7 @@ async function refresh(req, res) {
     await db.promise().query(
       `INSERT INTO refresh_tokens (user_id, token_hash, device_info, ip_address, expires_at,current_access_token)
        VALUES (?, ?, ?, ?, ?, ?)`,
-      [decoded.userId, hashToken(newRefreshToken), req.headers['user-agent'], req.ip, refreshExpiresAt, newAccessToken]
+      [decoded.userId, hashToken(newRefreshToken), req.headers['user-agent'], req.ip, refreshExpiresAt, hashToken(newAccessToken)]
     );
     res.cookie('refreshToken', newRefreshToken, {
       httpOnly: true,
@@ -420,10 +429,10 @@ async function getFullProfile(req, res) {
     [userId]  
   );
  
-  // const [[sessionCountRow]] = await db.promise().query(
-  //   `SELECT COUNT(*) AS count FROM user_sessions WHERE user_id = ? AND revoked_at IS NULL`,
-  //   [userId]
-  // );
+  const [[sessionCountRow]] = await db.promise().query(
+    `SELECT COUNT(*) AS count FROM refresh_tokens WHERE user_id = ? AND is_revoked=?`,
+    [userId,0]
+  );
   const [[access]] = await db.promise().query(
     `SELECT permission_level, user_management_access, reports_access,
             settings_access, api_access, last_role_change_at
@@ -497,7 +506,7 @@ return res.status(200).json({
             twoFactorEnabled: !!security?.two_fa_enabled,
             emailVerified: !!security?.email,
             phoneVerified: !!security?.phone,
-            // activeSessionsCount: sessionCountRow?.count || 0,
+            activeSessionsCount: sessionCountRow?.count || 0,
             lastLogin: security?.last_login,
             lastLoginLocation: security?.last_login_location,
             lastLoginDevice: security?.last_login_device,
@@ -583,10 +592,6 @@ async function updatePersonalInfo(req, res) {
       .join(", ");
 
     const values = updates.map(([, value]) => value);
-
-    console.log("Update fields:", updates);
-    console.log("Update values:", values);
-
     const [result] = await db.promise().query(
       `UPDATE users
        SET ${setClause}
@@ -1023,7 +1028,7 @@ try {
         userAgent,
         ip,
         refreshExpiresAt,
-        accessToken,
+        hashToken(accessToken),
       ]
     );
 

@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import DashboardShell from "../DashboardShell";
 import {
   Users,
   UserCheck,
@@ -120,7 +119,7 @@ const StudentRecordManagement = () => {
   const totalPages = 797;
 
   return (
-    <DashboardShell title={"Student Record Management"}>
+    <>
     <div className="w-full min-w-0 rounded-2xl border border-slate-800/80 bg-gradient-to-br from-[#071425] via-[#091827] to-[#07111f] p-5 text-white shadow-2xl">
 
       {/* =====================================================
@@ -671,7 +670,7 @@ const StudentRecordManagement = () => {
       </div>
 
     </div>
-    </DashboardShell>
+    </>
   );
 };
 

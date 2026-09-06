@@ -7,13 +7,12 @@ import {
   useRef,
   useState,
 } from "react";
-
 import { BASE_URI } from "../config/api";
 const AuthContext = createContext(undefined);
 export const AuthProvider = ({ children }) => {
   const [accessToken, setAccessToken] = useState(null);
   const [user, setUser] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(false);
   const accessTokenRef = useRef(null);
   useEffect(() => {
     accessTokenRef.current = accessToken;
@@ -27,10 +26,8 @@ export const AuthProvider = ({ children }) => {
 
   const logout = useCallback(async () => {
     accessTokenRef.current = null;
-
     setAccessToken(null);
     setUser(null);
-
     try {
       await fetch(`${BASE_URI}/api/logout`, {
         method: "GET",
@@ -62,6 +59,7 @@ export const AuthProvider = ({ children }) => {
 
       if (data.user) {
         setUser(data.user);
+
       }
 
       return data.accessToken;
@@ -70,31 +68,12 @@ export const AuthProvider = ({ children }) => {
 
       accessTokenRef.current = null;
       setAccessToken(null);
+
       setUser(null);
 
       return null;
     }
   }, []);
-
-  useEffect(() => {
-    let mounted = true;
-
-    const restoreSession = async () => {
-      try {
-        await tryRefresh();
-      } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    restoreSession();
-
-    return () => {
-      mounted = false;
-    };
-  }, [tryRefresh]);
 
   const authFetch = useCallback(
     async (url, options = {}) => {
@@ -159,7 +138,6 @@ export const AuthProvider = ({ children }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }

@@ -1,29 +1,23 @@
 import DashboardLayout from "../../components/dashboard/layout/DashboardLayout";
 import { useAuth } from "../../context/AuthContext";
-import { useNavigate } from "react-router-dom";
-const DashboardShell = ({ title, children }) => {
+import { useNavigate, Outlet } from "react-router-dom";
+
+const DashboardShell = () => {
   const { logout } = useAuth();
   const navigate = useNavigate();
 
-
   const handleLogout = () => {
-
-    logout(); // Context se token aur user clear
-
+    logout();
     navigate("/login");
-
   };
 
-
   return (
-    <DashboardLayout 
-        title={title} 
-        onLogout={handleLogout}
+    <DashboardLayout
+      onLogout={handleLogout}
     >
-      {children}
+      <Outlet />
     </DashboardLayout>
-  ); 
+  );
 };
-
 
 export default DashboardShell;
