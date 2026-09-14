@@ -7,9 +7,8 @@ const Main_layout = lazy(() => import("./components/Main_layout"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
 const ResetPassword = lazy(() => import("./pages/ForgetPassword"));
 const DashboardRoutes = lazy(() =>import("./pages/dashboard/DashboardRoutes"));
-const StudentDashboard = lazy(()=> import("./pages/Student/StudentDashboard"));
+const StudentRoutes   = lazy(()=> import("./pages/Student/StudentRoutes"));
 const StudentLogin = lazy(()=> import("./pages/Student/Studentlogin"));
-const GenerateMember = lazy(()=> import("./pages/GenerateMember"));
 
 const App = () => {
   const { accessToken, isLoading } = useAuth();
@@ -40,8 +39,7 @@ const App = () => {
           <Route path="/dashboard/*" element={ <DashboardRoutes />} />
           <Route path="/forgetpassword"element={  <ResetPassword />} />
           <Route path="/student/login" element={<StudentLogin />} />
-          <Route path="/student/" element={ <StudentDashboard />} />
-          <Route path="/addMember/" element={ <GenerateMember />} />
+          <Route path="/student/*" element={ <StudentRoutes />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

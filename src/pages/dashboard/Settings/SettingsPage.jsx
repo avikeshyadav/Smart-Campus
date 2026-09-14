@@ -386,7 +386,7 @@ const SettingsPage = () => {
                             return (
                               <div
                                 key={item.key}
-                                className={`group flex items-center justify-between gap-4 rounded-xl border p-4 transition ${
+                                className={`group col-2 flex items-center justify-between gap-4 rounded-xl border p-4 transition ${
                                   enabled
                                     ? "border-slate-700 bg-slate-800/40"
                                     : "border-slate-800 bg-slate-950/30"

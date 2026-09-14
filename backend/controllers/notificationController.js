@@ -160,8 +160,6 @@ const markAllAsRead = async (req, res) => {
 const deleteNotification = async (req, res) => {
   try {
    const notificationId = req.params.id;
-    console.log(notificationId)
-
     const [result] = await db.promise().query(
       `
       DELETE FROM notifications

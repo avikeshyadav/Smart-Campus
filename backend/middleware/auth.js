@@ -7,7 +7,6 @@ const verifyAccessToken = async (req, res, next) => {
     try {
         // 1. Authorization header check
         const authHeader = req.headers.authorization; 
-
         if (!authHeader) {
             return res.status(401).json({
                 success: false,
@@ -19,12 +18,11 @@ const verifyAccessToken = async (req, res, next) => {
         if (!authHeader.startsWith("Bearer ")) {
             return res.status(401).json({
                 success: false,
-                message: "Invalid Authorization Header"
+                message: "Invalid Authorization Header" 
             });
         }
         // 3. Token extract
         const token = authHeader.split(" ")[1];
-
         if (!token) {
             return res.status(401).json({
                 success: false,
@@ -38,8 +36,8 @@ const verifyAccessToken = async (req, res, next) => {
             token,
             process.env.JWT_ACCESS_SECRET
         );
-        const hashtoken = hashToken(token);
 
+        const hashtoken = hashToken(token);
         // 5. Check token in database
         const [rows] = await db.promise().query(
             `SELECT current_access_token
@@ -58,7 +56,6 @@ const verifyAccessToken = async (req, res, next) => {
                 code: "SESSION_EXPIRED"
             });
         }
-
         // 7. User information save
         req.user = decoded;
         req.token = token;

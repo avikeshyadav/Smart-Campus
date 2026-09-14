@@ -6,48 +6,12 @@ import React, {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  CheckCircle2,
-  ChevronDown,
-  Download,
-  Filter,
-  RefreshCw,
-  TrendingUp,
-  Users,
-  UserCheck,
-  UserX,
-  Clock3,
-  CalendarDays,
-  AlertTriangle,
-  Activity,
-  Search,
-  X,
-  Eye,
-  Mail,
-  Phone,
-  GraduationCap,
-  Building2,
-  BookOpen,
-  Clock,
-  ChevronLeft,
-  ChevronRight,
-  FileSpreadsheet,
-  SlidersHorizontal,
+  CheckCircle2,ChevronDown,Download,Filter,RefreshCw,TrendingUp,Users,UserCheck,UserX,Clock3,CalendarDays,AlertTriangle,Activity,Search,
+  X,Eye,Mail,Phone,GraduationCap,Building2,BookOpen,Clock,ChevronLeft,ChevronRight,FileSpreadsheet,SlidersHorizontal,
 } from "lucide-react";
-
-import {
-  PieChart,
-  Pie,
-  Cell,
-  ResponsiveContainer,
-  Tooltip,
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-} from "recharts";
-
+import {PieChart,Pie,Cell,ResponsiveContainer,Tooltip,AreaChart,Area,XAxis,YAxis,CartesianGrid,} from "recharts";
 import { BASE_URI } from "../../../config/api";
+import {useAuth} from "../../../context/AuthContext";
 
 /* =========================================================
    COLORS
@@ -834,54 +798,28 @@ function InfoBox({ label, value }) {
    MAIN COMPONENT
 ========================================================= */
 
-export default function AttendanceOverview({
-  dateLabel = "",
-  onDownload,
-  onFilter,
-}) {
+export default function AttendanceOverview({dateLabel = "",onDownload,onFilter,}) {
+  const {accessToken} = useAuth();
   const [period, setPeriod] = useState("Today");
-
-  const [attendance, setAttendance] =
-    useState(EMPTY_DATA);
-
+  const [attendance, setAttendance] = useState(EMPTY_DATA);
   const [loading, setLoading] = useState(true);
-
   const [error, setError] = useState("");
-
   const [refreshing, setRefreshing] = useState(false);
-
   const [showTrend] = useState(true);
 
   /* =======================================================
      STUDENT FILTER STATE
   ======================================================= */
 
-  const [studentSearch, setStudentSearch] =
-    useState("");
-
-  const [statusFilter, setStatusFilter] =
-    useState("All");
-
-  const [departmentFilter, setDepartmentFilter] =
-    useState("All");
-
-  const [courseFilter, setCourseFilter] =
-    useState("All");
-
-  const [yearFilter, setYearFilter] =
-    useState("All");
-
-  const [showFilters, setShowFilters] =
-    useState(false);
-
-  const [selectedStudent, setSelectedStudent] =
-    useState(null);
-
-  const [currentPage, setCurrentPage] = 
-    useState(1);
-
-  const [pageSize, setPageSize] =
-    useState(10);
+  const [studentSearch, setStudentSearch] =useState("");
+  const [statusFilter, setStatusFilter] = useState("All");
+  const [departmentFilter, setDepartmentFilter] = useState("All");
+  const [courseFilter, setCourseFilter] =useState("All");
+  const [yearFilter, setYearFilter] =useState("All");
+  const [showFilters, setShowFilters] =useState(false);
+  const [selectedStudent, setSelectedStudent] =useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] =useState(10);
 
   /* =======================================================
      FETCH ATTENDANCE
@@ -893,18 +831,16 @@ export default function AttendanceOverview({
         if (showLoader) {
           setLoading(true);
         }
-
         setError("");
-
         const response = await fetch(
           `${BASE_URI}/api/attendance?period=${encodeURIComponent(
             period
           )}`,
           {
             method: "GET",
-
             headers: {
               Accept: "application/json",
+              authorization:`Bearer ${accessToken}`,
             },
 
             credentials: "include",

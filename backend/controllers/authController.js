@@ -10,14 +10,20 @@ const { generateAccessToken, generateRefreshToken,
 const MAX_ATTEMPTS = parseInt(process.env.MAX_LOGIN_ATTEMPTS || '5', 10);
 const LOCK_MINUTES = parseInt(process.env.LOCK_TIME_MINUTES || '15', 10);
 const REFRESH_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
-const CAPTCHA_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const CAPTCHA_TTL_MS = 2 * 60 * 1000; // 2 minutes
 const crypto = require("crypto");
+const { getUserRbac } = require("./rbacController.js");
 
 const createCaptcha = () => {
-    return crypto.randomInt(1000, 10000).toString();
+  let result =""
+  const data = "AVIKESH";
+  for(i= 0 ; i < 6 ; i++){
+    result += data[Math.floor(Math.random() * data.length)]
+  }
+    // return crypto.randomInt(1000, 10000).toString();
+    return result;
 };
 const captchaStore = new Map();
-
 function cleanupExpiredCaptchas() {
   const now = Date.now();
   for (const [token, entry] of captchaStore.entries()) {
@@ -116,7 +122,7 @@ async function register(req, res) {
         verificationExpires,
       ]
     );
-    sendVerificationEmail(normalizedEmail,hashedVerificationToken);
+    // sendVerificationEmail(normalizedEmail,hashedVerificationToken);
     return res.status(201).json({
       message: "User Registered Successfully",
     });
@@ -164,7 +170,7 @@ async function login(req, res) {
         message: `Account is temporarily locked. Try again in ${minutesLeft} minute(s).`,
       });
     }
-
+ 
     if (!user.is_verified) {
       return res.status(403).json({ success: false, message: 'Please verify your account first.' });
     }
@@ -196,7 +202,7 @@ async function login(req, res) {
       [user.id, ip, userAgent]
     );  
 
-    const payload = { userId: user.id, email: user.email };
+    const payload = { userId: user.id, email: user.email ,role: user?.role};
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
     const refreshExpiresAt = new Date(Date.now() + REFRESH_MAX_AGE_MS);
@@ -215,17 +221,20 @@ async function login(req, res) {
       maxAge: REFRESH_MAX_AGE_MS,
     });
 
+    const rbac = await getUserRbac(user.id);
     return res.json({
       success: true,
       message: "Login Successful",
       accessToken,
       user: {
         id: user.id,
-        role: user?.job_title,
         name: user.name,
         email: user.email,
         avatar_url: user.avatar_url,
         last_login: user.last_login,
+        roles: rbac.roles,
+        permissions: rbac.permissions,
+        isSuperAdmin: rbac.isSuperAdmin,
       },
     });
   } catch (err) {
@@ -305,7 +314,7 @@ async function refresh(req, res) {
       [rows[0].id]
     );
 
-    const payload = { userId: decoded.userId, email: decoded.email };
+    const payload = { userId: decoded.userId, email: decoded.email,role:decoded?.role };
     const newAccessToken = generateAccessToken(payload);
     const newRefreshToken = generateRefreshToken(payload);
     const refreshExpiresAt = new Date(Date.now() + REFRESH_MAX_AGE_MS);
@@ -330,13 +339,18 @@ async function refresh(req, res) {
     const user = userRows[0]
       ? {
           id: userRows[0].id,
-          role: userRows[0].job_title,
           name: userRows[0].name,
           email: userRows[0].email,
           avatar_url: userRows[0].avatar_url,
           last_login: userRows[0].last_login,
         }
       : null;
+    if (user) {
+      const rbac = await getUserRbac(user.id);
+      user.roles = rbac.roles;
+      user.permissions = rbac.permissions;
+      user.isSuperAdmin = rbac.isSuperAdmin;
+    }
     return res.json({ success: true, accessToken: newAccessToken, user });
 
   } catch (err) {
@@ -656,8 +670,6 @@ async function changePassword(req, res) {
     try {
         const userId = req.user.userId;
         const { newPassword } = req.body;
-
-        console.log("Change password userId:", userId);
         if (!userId) {
             return res.status(401).json({
                 success: false,
@@ -1039,17 +1051,21 @@ try {
       maxAge: REFRESH_MAX_AGE_MS,
     });
 
+    const rbac = await getUserRbac(user.id);
     return res.json({
       success: true,
       message: "Login Successful",
       accessToken,
       user: {
-        // id: user.id,
+        id: user.id,
         role: user.job_title,
         name: user.name,
         email: user.email,
         avatar_url: user.avatar_url,
         last_login: user.last_login,
+        roles: rbac.roles,
+        permissions: rbac.permissions,
+        isSuperAdmin: rbac.isSuperAdmin,
       },
     });
 

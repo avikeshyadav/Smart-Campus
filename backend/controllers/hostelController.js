@@ -31,6 +31,7 @@ New hierarchy APIs are added under /api/hostel.
 // ============================================================
 async function overview(req, res) {
   try {
+    console.log("Dads")
     const campusId = clean(req.query.campus_id);
     const params = campusId ? [campusId] : [];
 
@@ -76,7 +77,6 @@ async function overview(req, res) {
     // The repeated campus placeholder occurs in each scalar query.
     const p = [];
     for (let i = 0; i < (campusId ? 8 : 0); i++) p.push(campusId);
-
     const data = await one(sql, p);
     return res.json({
       success: true,
@@ -406,8 +406,8 @@ async function createRoom(req,res){
 
     const r=await query(`
       INSERT INTO hostel_rooms(floor_id,room_number,room_type,total_beds,occupied_beds,status)
-      VALUES(?,?,?,0,0,?)
-    `,[floor_id,clean(room_number),clean(room_type)||"Triple Sharing",clean(status)||"Available"]);
+      VALUES(?,?,?,?,0,?)
+    `,[floor_id,clean(room_number),clean(room_type)||"Triple Sharing",beds,clean(status)||"Available"]);
     const roomId=r.insertId;
     const values=Array.from({length:beds},(_,i)=>[roomId,i+1,"Available"]);
     await query("INSERT INTO hostel_beds(room_id,bed_number,status) VALUES ?",[values]);
@@ -744,6 +744,805 @@ async function updateMaintenance(req,res){
   }catch(e){return sendError(res,e,"Failed to update maintenance");}
 }
 
+
+const VALID_NOTICE_TYPES = [
+  "general",
+  "academic",
+  "exam",
+  "hostel",
+  "fee",
+  "event",
+  "holiday",
+  "emergency",
+];
+
+const VALID_PRIORITIES = [
+  "low",
+  "normal",
+  "high",
+  "urgent",
+];
+
+const VALID_TARGET_TYPES = [
+  "all",
+  "student",
+  "department",
+];
+
+
+// =====================================================
+// CREATE NOTICE
+// POST /api/hostels/notices
+// =====================================================
+
+async function PostNotices(req, res) {
+  try {
+    const {
+      title,
+      message,
+      notice_type,
+      priority,
+      target_type,
+      target_student_id,
+      target_department,
+      expires_at,
+    } = req.body || {};
+
+    // ---------------------------------------------------
+    // AUTH CHECK
+    // ---------------------------------------------------
+
+    if (!req.user || !req.user.userId) {
+      return res.status(401).json({
+        success: false,
+        message: "Unauthorized. Admin login required.",
+      });
+    }
+
+    const adminId = req.user.userId;
+
+    // ---------------------------------------------------
+    // BASIC VALIDATION
+    // ---------------------------------------------------
+
+    if (
+      typeof title !== "string" ||
+      !title.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Notice title is required",
+      });
+    }
+
+    if (
+      typeof message !== "string" ||
+      !message.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Notice message is required",
+      });
+    }
+
+    // ---------------------------------------------------
+    // FINAL VALUES
+    // ---------------------------------------------------
+
+    const finalNoticeType =
+      notice_type || "general";
+
+    const finalPriority =
+      priority || "normal";
+
+    const finalTargetType =
+      target_type || "all";
+
+    // ---------------------------------------------------
+    // ENUM VALIDATION
+    // ---------------------------------------------------
+
+    if (
+      !VALID_NOTICE_TYPES.includes(
+        finalNoticeType
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid notice type. Allowed values: ${VALID_NOTICE_TYPES.join(
+          ", "
+        )}`,
+      });
+    }
+
+    if (
+      !VALID_PRIORITIES.includes(
+        finalPriority
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid priority. Allowed values: ${VALID_PRIORITIES.join(
+          ", "
+        )}`,
+      });
+    }
+
+    if (
+      !VALID_TARGET_TYPES.includes(
+        finalTargetType
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid target type. Allowed values: ${VALID_TARGET_TYPES.join(
+          ", "
+        )}`,
+      });
+    }
+
+    // ---------------------------------------------------
+    // TARGET VALIDATION
+    // ---------------------------------------------------
+
+    let finalStudentId = null;
+    let finalDepartment = null;
+
+    // Specific student
+    if (finalTargetType === "student") {
+      const studentId = Number(
+        target_student_id
+      );
+
+      if (
+        !target_student_id ||
+        !Number.isInteger(studentId) ||
+        studentId <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid student ID is required",
+        });
+      }
+
+      // Check student exists
+      const [students] =
+        await db.promise().query(
+          `
+          SELECT id
+          FROM students
+          WHERE id = ?
+          LIMIT 1
+          `,
+          [studentId]
+        );
+
+      if (students.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Student not found",
+        });
+      }
+
+      finalStudentId = studentId;
+    }
+
+    // Department
+    if (
+      finalTargetType ===
+      "department"
+    ) {
+      if (
+        typeof target_department !==
+          "string" ||
+        !target_department.trim()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Department is required",
+        });
+      }
+
+      finalDepartment =
+        target_department.trim();
+    }
+
+    // ---------------------------------------------------
+    // EXPIRY DATE
+    // ---------------------------------------------------
+
+    let finalExpiresAt = null;
+
+    if (expires_at) {
+      const expiryDate = new Date(
+        expires_at
+      );
+
+      if (
+        Number.isNaN(
+          expiryDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid expiry date",
+        });
+      }
+
+      finalExpiresAt = expiryDate;
+    }
+
+    // ---------------------------------------------------
+    // INSERT
+    // ---------------------------------------------------
+
+    const [result] =
+      await db.promise().query(
+        `
+        INSERT INTO notices
+        (
+          title,
+          message,
+          notice_type,
+          priority,
+          target_type,
+          target_student_id,
+          target_department,
+          created_by,
+          expires_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          title.trim(),
+          message.trim(),
+          finalNoticeType,
+          finalPriority,
+          finalTargetType,
+          finalStudentId,
+          finalDepartment,
+          adminId,
+          finalExpiresAt,
+        ]
+      );
+
+    // ---------------------------------------------------
+    // RESPONSE
+    // ---------------------------------------------------
+
+    return res.status(201).json({
+      success: true,
+      message: "Notice created successfully",
+      data: {
+        id: result.insertId,
+      },
+    });
+
+  } catch (error) {
+    console.error(
+      "CREATE NOTICE ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while creating notice",
+      error:
+        process.env.NODE_ENV ===
+        "development"
+          ? error.message
+          : undefined,
+    });
+  }
+}
+
+
+// =====================================================
+// GET ALL NOTICES
+// GET /api/hostels/notices
+// =====================================================
+
+async function GetNotices(req, res) {
+  try {
+    const [notices] =
+      await db.promise().query(
+        `
+        SELECT
+          n.id,
+          n.title,
+          n.message,
+          n.notice_type,
+          n.priority,
+          n.target_type,
+          n.target_student_id,
+          n.target_department,
+          n.expires_at,
+          n.created_at,
+          n.updated_at,
+
+          s.name AS student_name,
+          s.email AS student_email,
+
+          u.id AS admin_id,
+          u.name AS admin_name
+
+        FROM notices n
+
+        LEFT JOIN students s
+          ON n.target_student_id = s.id
+
+        LEFT JOIN users u
+          ON n.created_by = u.id
+
+        ORDER BY n.created_at DESC
+        `
+      );
+
+    return res.status(200).json({
+      success: true,
+      count: notices.length,
+      data: notices,
+    });
+
+  } catch (error) {
+    console.error(
+      "GET NOTICES ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while fetching notices",
+    });
+  }
+}
+
+
+// =====================================================
+// GET SINGLE NOTICE
+// GET /api/hostels/notices/:id
+// =====================================================
+
+async function GetSingleNotice(req, res) {
+  try {
+    const { id } = req.params;
+
+    const noticeId = Number(id);
+
+    if (
+      !Number.isInteger(noticeId) ||
+      noticeId <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid notice ID",
+      });
+    }
+
+    const [notices] =
+      await db.promise().query(
+        `
+        SELECT
+          n.id,
+          n.title,
+          n.message,
+          n.notice_type,
+          n.priority,
+          n.target_type,
+          n.target_student_id,
+          n.target_department,
+          n.expires_at,
+          n.created_at,
+          n.updated_at,
+
+          s.name AS student_name,
+          s.email AS student_email,
+
+          u.id AS admin_id,
+          u.name AS admin_name
+
+        FROM notices n
+
+        LEFT JOIN students s
+          ON n.target_student_id = s.id
+
+        LEFT JOIN users u
+          ON n.created_by = u.id
+
+        WHERE n.id = ?
+
+        LIMIT 1
+        `,
+        [noticeId]
+      );
+
+    if (notices.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Notice not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: notices[0],
+    });
+
+  } catch (error) {
+    console.error(
+      "GET SINGLE NOTICE ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while fetching notice",
+    });
+  }
+}
+
+
+// =====================================================
+// UPDATE NOTICE
+// PUT /api/hostels/notices/:id
+// =====================================================
+
+async function UpdateNotice(req, res) {
+  try {
+    const { id } = req.params;
+
+    const noticeId = Number(id);
+
+    if (
+      !Number.isInteger(noticeId) ||
+      noticeId <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid notice ID",
+      });
+    }
+
+    const {
+      title,
+      message,
+      notice_type,
+      priority,
+      target_type,
+      target_student_id,
+      target_department,
+      expires_at,
+    } = req.body || {};
+
+    // ---------------------------------------------------
+    // CHECK NOTICE
+    // ---------------------------------------------------
+
+    const [existing] =
+      await db.promise().query(
+        `
+        SELECT id
+        FROM notices
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [noticeId]
+      );
+
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Notice not found",
+      });
+    }
+
+    // ---------------------------------------------------
+    // VALIDATION
+    // ---------------------------------------------------
+
+    if (
+      typeof title !== "string" ||
+      !title.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Notice title is required",
+      });
+    }
+
+    if (
+      typeof message !== "string" ||
+      !message.trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Notice message is required",
+      });
+    }
+
+    const finalNoticeType =
+      notice_type || "general";
+
+    const finalPriority =
+      priority || "normal";
+
+    const finalTargetType =
+      target_type || "all";
+
+    // ---------------------------------------------------
+    // ENUM VALIDATION
+    // ---------------------------------------------------
+
+    if (
+      !VALID_NOTICE_TYPES.includes(
+        finalNoticeType
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid notice type. Allowed values: ${VALID_NOTICE_TYPES.join(
+          ", "
+        )}`,
+      });
+    }
+
+    if (
+      !VALID_PRIORITIES.includes(
+        finalPriority
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid priority. Allowed values: ${VALID_PRIORITIES.join(
+          ", "
+        )}`,
+      });
+    }
+
+    if (
+      !VALID_TARGET_TYPES.includes(
+        finalTargetType
+      )
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid target type. Allowed values: ${VALID_TARGET_TYPES.join(
+          ", "
+        )}`,
+      });
+    }
+
+    // ---------------------------------------------------
+    // TARGET VALUES
+    // ---------------------------------------------------
+
+    let finalStudentId = null;
+    let finalDepartment = null;
+
+    // Student
+    if (finalTargetType === "student") {
+      const studentId = Number(
+        target_student_id
+      );
+
+      if (
+        !target_student_id ||
+        !Number.isInteger(studentId) ||
+        studentId <= 0
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Valid student ID is required",
+        });
+      }
+
+      const [students] =
+        await db.promise().query(
+          `
+          SELECT id
+          FROM students
+          WHERE id = ?
+          LIMIT 1
+          `,
+          [studentId]
+        );
+
+      if (students.length === 0) {
+        return res.status(404).json({
+          success: false,
+          message: "Student not found",
+        });
+      }
+
+      finalStudentId = studentId;
+    }
+
+    // Department
+    if (
+      finalTargetType ===
+      "department"
+    ) {
+      if (
+        typeof target_department !==
+          "string" ||
+        !target_department.trim()
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Department is required",
+        });
+      }
+
+      finalDepartment =
+        target_department.trim();
+    }
+
+    // ---------------------------------------------------
+    // EXPIRY
+    // ---------------------------------------------------
+
+    let finalExpiresAt = null;
+
+    if (expires_at) {
+      const expiryDate = new Date(
+        expires_at
+      );
+
+      if (
+        Number.isNaN(
+          expiryDate.getTime()
+        )
+      ) {
+        return res.status(400).json({
+          success: false,
+          message: "Invalid expiry date",
+        });
+      }
+
+      finalExpiresAt = expiryDate;
+    }
+
+    // ---------------------------------------------------
+    // UPDATE
+    // ---------------------------------------------------
+
+    await db.promise().query(
+      `
+      UPDATE notices
+      SET
+        title = ?,
+        message = ?,
+        notice_type = ?,
+        priority = ?,
+        target_type = ?,
+        target_student_id = ?,
+        target_department = ?,
+        expires_at = ?,
+        updated_at = CURRENT_TIMESTAMP
+
+      WHERE id = ?
+      `,
+      [
+        title.trim(),
+        message.trim(),
+        finalNoticeType,
+        finalPriority,
+        finalTargetType,
+        finalStudentId,
+        finalDepartment,
+        finalExpiresAt,
+        noticeId,
+      ]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Notice updated successfully",
+    });
+
+  } catch (error) {
+    console.error(
+      "UPDATE NOTICE ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while updating notice",
+      error:
+        process.env.NODE_ENV ===
+        "development"
+          ? error.message
+          : undefined,
+    });
+  }
+}
+
+
+// =====================================================
+// DELETE NOTICE
+// DELETE /api/hostels/notices/:id
+// =====================================================
+
+async function DeleteNotice(req, res) {
+  try {
+    const { id } = req.params;
+
+    const noticeId = Number(id);
+
+    if (
+      !Number.isInteger(noticeId) ||
+      noticeId <= 0
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid notice ID",
+      });
+    }
+
+    // ---------------------------------------------------
+    // CHECK NOTICE
+    // ---------------------------------------------------
+
+    const [existing] =
+      await db.promise().query(
+        `
+        SELECT id
+        FROM notices
+        WHERE id = ?
+        LIMIT 1
+        `,
+        [noticeId]
+      );
+
+    if (existing.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Notice not found",
+      });
+    }
+
+    // ---------------------------------------------------
+    // DELETE
+    // ---------------------------------------------------
+
+    await db.promise().query(
+      `
+      DELETE FROM notices
+      WHERE id = ?
+      `,
+      [noticeId]
+    );
+
+    return res.status(200).json({
+      success: true,
+      message: "Notice deleted successfully",
+    });
+
+  } catch (error) {
+    console.error(
+      "DELETE NOTICE ERROR:",
+      error
+    );
+
+    return res.status(500).json({
+      success: false,
+      message:
+        "Server error while deleting notice",
+    });
+  }
+}
+
+
+
+// =====================================================
+// EXPORT
+// =====================================================
+
 module.exports={
   overview,
   hostels,hostel,createHostel,updateHostel,deleteHostel,
@@ -751,5 +1550,6 @@ module.exports={
   rooms,room,createRoom,updateRoom,deleteRoom,roomBeds,beds,
   availableStudents,allocate,vacate,residents,
   changes,createChange,processChange,
-  maintenance,createMaintenance,updateMaintenance
+  maintenance,createMaintenance,updateMaintenance,
+  PostNotices, GetNotices, GetSingleNotice,UpdateNotice,DeleteNotice,
 };

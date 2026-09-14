@@ -12,7 +12,7 @@ async function getAttendance(req, res) {
 
     let dateCondition = "";
     let dateParams = [];
-
+ 
     // =================================================
     // DATE FILTER
     // =================================================
@@ -82,7 +82,7 @@ async function getAttendance(req, res) {
       WHERE LOWER(
         COALESCE(s.status, 'Active')
       ) = 'active'
-
+       
       ${dateCondition}
       `,
       dateParams

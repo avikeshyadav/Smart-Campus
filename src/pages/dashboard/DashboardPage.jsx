@@ -2,51 +2,47 @@ import { useEffect, useState } from "react";
 import { toast } from "react-hot-toast";
 import { BASE_URI } from "../../config/api";
 import { useAuth } from "../../context/AuthContext";
-import MainCameraComponent from "../dashboard/DashboardModule/MainCameraComponent";
-import QuickActtion from "../dashboard/DashboardModule/QuickAction";
-import SystemOverview from "../dashboard/DeviceHealthPanel/SystemOverview";
-import Alert_Notifications from "../dashboard/DashboardModule/Alert_Notifications";
+import PolarAreaChart from "./DashboardModule/Charts/PolarAreaChart";
+import HostelOverview from "./DashboardModule/Charts/HostelOverview";
+import DepartmentStudentsChart from "./DashboardModule/Charts/DepartmentStudentsChart";
+import MainCameraComponent from "./DashboardModule/MainCameraComponent";
+import Alert_Notifications from "./DashboardModule/Alert_Notifications";
+import SystemOverview from "./DeviceHealthPanel/SystemOverview";
 
 const DashboardPage = () => {
-  const { accessToken } = useAuth();
-
+  const { accessToken ,user} = useAuth();
   const [summary, setSummary] = useState({
-    totalStudents: 0,
-    activeToday: 0,
-    verifiedMatches: 0,
-    alerts: 0,
+    totalStudents: 0,availableBeds: 0,maintenanceRooms: 0,occupiedBeds: 0,
+    openMaintenance:0, totalBeds:0, totalFloors:0, totalHostels:0, totalRooms:0
   });
-
-  const [trackedStudent, setTrackedStudent] = useState(null);
 
   useEffect(() => {
     if (!accessToken) return;
-
-    let cancelled = false;
-
+    let cancelled = false; 
     const loadDashboard = async () => {
       try {
         const response = await fetch(
-          `${BASE_URI}/api/students/count`,
+          `${BASE_URI}/api/dashboard/dashboardData`,
           {
             headers: {
               Authorization: `Bearer ${accessToken}`,
             },
           }
         );
-
-        if (!response.ok) {
-          throw new Error(`Server error: ${response.status}`);
-        }
-
+        if (!response.ok) {throw new Error(`Server error: ${response.status}`);}
         const data = await response.json();
-
         if (cancelled) return;
-
         setSummary((prev) => ({
           ...prev,
-          totalStudents: Number(data?.totalStudents || 0),
-          activeToday: Number(data?.todayAttendance || 0),
+          totalStudents: Number(data?.overview?.totalStudents || 0),
+          availableBeds: Number(data?.overview?.availableBeds || 0),
+          maintenanceRooms: Number(data?.overview?.maintenanceRooms || 0),
+          occupiedBeds: Number(data?.overview?.occupiedBeds || 0),
+          openMaintenance: Number(data?.overview?.openMaintenance || 0),
+          totalBeds: Number(data?.overview?.totalBeds || 0),
+          totalFloors: Number(data?.overview?.totalFloors || 0),
+          totalHostels: Number(data?.overview?.totalHostels || 0),
+          totalRooms: Number(data?.overview?.totalRooms || 0),
         }));
       } catch (error) {
         if (!cancelled) {
@@ -55,76 +51,33 @@ const DashboardPage = () => {
         }
       }
     };
-
     loadDashboard();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [accessToken]);
-
-  /*
-   * Camera se jab student milega,
-   * sirf tracking state update hogi.
-   *
-   * Attendance count backend se aayega.
-   */
-  const handleStudentTracked = (student) => {
-    if (!student?.student_id) return;
-
-    setTrackedStudent(student);
-
-    setSummary((prev) => ({
-      ...prev,
-      verifiedMatches: prev.verifiedMatches + 1,
-    }));
-  };
+    return () => {cancelled = true;};}, [accessToken]);
+    console.log(summary)
 
   return (
     <div className="space-y-2">
-
-      {/* SUMMARY */}
-
-      <section className="grid grid-cols-2 gap-2 md:grid-cols-4">
-        <Stat
-          label="Total Students"
-          value={summary.totalStudents}
-        />
-
-        <Stat
-          label="Total Attendance Today"
-          value={summary.activeToday}
-        />
-
-        <Stat
-          label="Recognition Matches"
-          value={summary.verifiedMatches}
-        />
-
-        <Stat
-          label="Alerts"
-          value={summary.alerts}
-        />
-      </section>
-
       {/* TRACKING */}
-
-      <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+           {user?.roles?.some((role) => ["super_admin", "ragistar"].includes(role.slug)) ?(
+         <section className="grid grid-cols-1 gap-3 lg:grid-cols-2 rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
+              <PolarAreaChart
+                title="Overall Details"
+                totalStudents={summary.totalStudents}
+              />
+              <HostelOverview summary ={summary}
+              />
+         </section>):(
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/90 p-3">
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
           <MainCameraComponent
             accessToken={accessToken}
             baseUri={BASE_URI}
-            trackedStudent={trackedStudent}
-            onStudentTracked={handleStudentTracked}
           />
-
           <Alert_Notifications />
         </div>
-
-        <SystemOverview />
-        <QuickActtion />
       </section>
-
+      )}
+       {user?.isSuperAdmin ? (<SystemOverview />):(<div></div>)}
     </div>
   );
 };

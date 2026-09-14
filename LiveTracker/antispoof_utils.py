@@ -2,23 +2,11 @@ import io
 import numpy as np
 from PIL import Image
 from ultralytics import YOLO
-
 MODEL_PATH = "models/other.pt"
-
 CLASS_NAMES = ["fake", "real"]
-
-CONFIDENCE_THRESHOLD = 0.80
-
+CONFIDENCE_THRESHOLD = 0.60
 _model = YOLO(MODEL_PATH)
-
-
 def check_liveness(image_bytes: bytes):
-    """
-    Check whether the submitted face image is real or fake.
-
-    Returns:
-        (is_real, label, confidence_percent)
-    """
 
     try:
         image = (

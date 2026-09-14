@@ -121,15 +121,12 @@ const defaultFormData = {
 // =====================================================
 const Components = () => {
   const { accessToken } = useAuth();
-
   const [modules, setModules] = useState([]);
   const [openMenu, setOpenMenu] = useState(null);
-
   const [formData, setFormData] = useState(defaultFormData);
-
   const [isEdit, setIsEdit] = useState(false);
   const [editId, setEditId] = useState(null);
-
+  const [iconDropdownOpen, setIconDropdownOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [orderLoading, setOrderLoading] = useState(null);
 
@@ -1033,9 +1030,7 @@ const changeOrder = async (id, direction) => {
 
           </div>
 
-
           <div className="space-y-4">
-
             {/* Label */}
             <input
               value={formData.label}
@@ -1058,8 +1053,6 @@ const changeOrder = async (id, direction) => {
                 focus:border-cyan-500
               "
             />
-
-
             {/* Path */}
             <input
               value={formData.path}
@@ -1082,8 +1075,6 @@ const changeOrder = async (id, direction) => {
                 focus:border-cyan-500
               "
             />
-
-
             {/* Parent */}
             <select
               value={formData.parent_id}
@@ -1120,42 +1111,136 @@ const changeOrder = async (id, direction) => {
               ))}
 
             </select>
-
-
             {/* Icon */}
-            <select
-              value={formData.icon}
-              onChange={(e) =>
-                setFormData({
-                  ...formData,
-                  icon: e.target.value,
-                })
-              }
-              className="
-                w-full
-                rounded-lg
-                border
-                border-slate-700
-                bg-slate-950
-                p-3
-                text-white
-                outline-none
-                focus:border-cyan-500
-              "
-            >
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() =>
+                  setIconDropdownOpen((prev) => !prev)
+                }
+                className="
+                  flex
+                  w-full
+                  items-center
+                  justify-between
+                  rounded-lg
+                  border
+                  border-slate-700
+                  bg-slate-950
+                  p-3
+                  text-white
+                  outline-none
+                  transition
+                  hover:border-slate-600
+                  focus:border-cyan-500
+                "
+              >
+                <div className="flex items-center gap-3">
+                  {formData.icon &&
+                    iconMap[formData.icon] &&
+                    (() => {
+                      const Icon = iconMap[formData.icon];
 
-              {Object.keys(iconMap).map((icon) => (
-                <option
-                  key={icon}
-                  value={icon}
+                      return (
+                        <Icon
+                          size={20}
+                          className="text-cyan-400"
+                        />
+                      );
+                    })()}
+
+                  <span>
+                    {formData.icon || "Select Icon"}
+                  </span>
+                </div>
+
+                <ChevronDown
+                  size={18}
+                  className={`transition-transform ${
+                    iconDropdownOpen
+                      ? "rotate-180"
+                      : ""
+                  }`}
+                />
+              </button>
+
+              {iconDropdownOpen && (
+                <div
+                  className="
+                    absolute
+                    left-0
+                    right-0
+                    z-50
+                    mt-2
+                    max-h-64
+                    overflow-y-auto
+                    rounded-lg
+                    border
+                    border-slate-700
+                    bg-slate-950
+                    p-1
+                    shadow-2xl
+                  "
                 >
-                  {icon}
-                </option>
-              ))}
+                  {Object.keys(iconMap).map((icon) => {
+                    const Icon = iconMap[icon];
 
-            </select>
+                    const selected =
+                      formData.icon === icon;
 
+                    return (
+                      <button
+                        key={icon}
+                        type="button"
+                        onClick={() => {
+                          setFormData({
+                            ...formData,
+                            icon,
+                          });
 
+                          setIconDropdownOpen(false);
+                        }}
+                        className={`
+                          flex
+                          w-full
+                          items-center
+                          gap-3
+                          rounded-md
+                          px-3
+                          py-2.5
+                          text-left
+                          transition
+                          ${
+                            selected
+                              ? "bg-cyan-500/10 text-cyan-400"
+                              : "text-slate-300 hover:bg-slate-800 hover:text-white"
+                          }
+                        `}
+                      >
+                        <Icon
+                          size={19}
+                          className={
+                            selected
+                              ? "text-cyan-400"
+                              : "text-slate-400"
+                          }
+                        />
+
+                        <span className="text-sm">
+                          {icon}
+                        </span>
+
+                        {selected && (
+                          <span className="ml-auto text-xs text-cyan-400">
+                            Selected
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
             {/* Sort Order */}
             <input
               type="number"
@@ -1180,8 +1265,6 @@ const changeOrder = async (id, direction) => {
                 focus:border-cyan-500
               "
             />
-
-
             {/* Active */}
             <label className="
               flex
@@ -1210,8 +1293,6 @@ const changeOrder = async (id, direction) => {
               />
 
             </label>
-
-
             {/* Visible */}
             <label className="
               flex
@@ -1240,8 +1321,6 @@ const changeOrder = async (id, direction) => {
               />
 
             </label>
-
-
             {/* Submit */}
             <button
               type="button"
@@ -1264,9 +1343,7 @@ const changeOrder = async (id, direction) => {
                 ? "Update Module"
                 : "Add Module"}
             </button>
-
           </div>
-
         </section>
 
       </div>

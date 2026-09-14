@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../../../context/AuthContext";
 import { BASE_URI } from "../../../config/api";
 import SidebarMobile from "./SidebarMobile";
+import { hasAnyPermission, isSuperAdmin } from "../../../rbac/rbac";
 
 import {
   Settings,UserCog,ShieldCheck,  Bell,  LockKeyhole,  Palette,  Database,  Home,  Users,User,GraduationCap,
@@ -60,7 +61,7 @@ const isFlagOn = (value, defaultValue = true) => {
 };
 
 const Sidebar = () => {
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth(); 
   const location = useLocation();
   const [openGroup, setOpenGroup] = useState("");
   const [dashboardNavItems, setDashboardNavItems] = useState([]);
@@ -279,6 +280,21 @@ const Sidebar = () => {
           "
         >
           <nav className="space-y-2">
+
+            {(isSuperAdmin(user) || hasAnyPermission(user, ["roles.view", "permissions.view", "users.roles.assign"])) && (
+              <Link
+                to="/dashboard/accesscontrolboard"  
+                className={`group flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-all ${
+                  location.pathname.startsWith("/dashboard/accesscontrolboard")
+                    ? "border-cyan-500 bg-cyan-500/10 text-cyan-400"
+                    : "border-transparent text-slate-300 hover:border-cyan-500 hover:bg-slate-900 hover:text-cyan-400"
+                }`}
+              >
+                <ShieldCheck size={20} className="text-cyan-400" />
+                <span className="truncate">Access Control</span>
+              </Link>
+            )}
+
             {dashboardNavItems.map((item) => {
               /*
               |--------------------------------------------------------------------------

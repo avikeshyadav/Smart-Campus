@@ -164,21 +164,44 @@ function Empty({ text, icon: Icon = Building2 }) {
   );
 }
 
-function OccupancyBar({ occupied, total }) {
-  const pct = total ? Math.round((occupied / total) * 100) : 0;
-  const color = pct >= 90 ? "bg-red-500" : pct >= 60 ? "bg-amber-500" : "bg-cyan-500";
+function OccupancyBar({ occupied = 0, total = 0 }) {
+  const occupiedBeds = Math.max(0, Number(occupied) || 0);
+  const totalBeds = Math.max(0, Number(total) || 0);
+
+  const percentage =
+    totalBeds > 0
+      ? Math.min(100, Math.round((occupiedBeds / totalBeds) * 100))
+      : 0;
+
+  const barColor =
+    percentage >= 90
+      ? "bg-red-500"
+      : percentage >= 60
+      ? "bg-amber-500"
+      : "bg-cyan-500";
+
   return (
-    <div className="mt-2">
-      <div className="flex justify-between text-[10px] text-slate-500 mb-1">
-        <span>{occupied}/{total} beds</span>
-        <span>{pct}%</span>
+    <div className="mt-2 w-full">
+      <div className="mb-1 flex items-center justify-between text-[10px] text-slate-500">
+        <span>
+          {occupiedBeds}/{totalBeds} beds
+        </span>
+        <span>{percentage}%</span>
       </div>
-      <div className="h-1.5 rounded-full bg-slate-800">
-        <div className={`h-full rounded-full ${color} transition-all`} style={{ width: `${pct}%` }} />
+
+      <div className="h-1.5 w-full rounded-full bg-slate-800 overflow-hidden">
+        <div
+          className={`h-full rounded-full ${barColor}`}
+          style={{
+            width: `${percentage}%`,
+            minWidth: percentage > 0 ? "2px" : "0px",
+          }}
+        />
       </div>
     </div>
   );
 }
+
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -258,7 +281,8 @@ export default function RoomsOverview() {
   };
 
   const openRoom = async (r) => {
-    try { const d = await api(`/api/hostel/rooms/${r.id}`); setRoomDetail(d?.room ? { ...d.room, beds: d.beds || [] } : null); }
+    try { const d = await api(`/api/hostel/rooms/${r.id}`); setRoomDetail(d?.room ? { ...d.room, beds: d.beds || [] } : null);    console.log(d) }
+
     catch (e) { toast.error(e.message); }
   };
 
@@ -311,7 +335,7 @@ export default function RoomsOverview() {
   const submitRoom = async () => {
     if (!roomForm.floor_id || !roomForm.room_number.trim()) { toast.error("Floor & room number required"); return; }
     try {
-      setSaving(true);
+      setSaving(true); 
       if (editingRoom) { await api(`/api/hostel/rooms/${editingRoom.id}`, { method: "PUT", body: JSON.stringify(roomForm) }); toast.success("Room updated"); }
       else             { await api("/api/hostel/rooms", { method: "POST", body: JSON.stringify(roomForm) }); toast.success("Room created"); }
       setShowRoomModal(false); setEditingRoom(null); setRoomForm({ ...emptyRoom, floor_id: selectedFloor?.id || floors[0]?.id || "" });
@@ -419,7 +443,7 @@ export default function RoomsOverview() {
         <StatCard icon={BedDouble}  label="Beds"     value={stats.beds}     color="emerald" sub="Total capacity" />
         <StatCard icon={Users}      label="Occupied" value={stats.occupied}  color="red"     sub={`${stats.beds ? Math.round((stats.occupied/stats.beds)*100) : 0}% occupancy`} />
       </div>
-
+    
       {/* ── Global Search ── */}
       <div className="relative">
         <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
@@ -588,7 +612,7 @@ export default function RoomsOverview() {
                     setShowRoomModal(true);
                   }}
                   className="px-3 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-bold flex items-center gap-1.5 text-sm transition"
-                >
+                > 
                   <Plus size={14} /> Add Room
                 </button>
               </div>
@@ -597,7 +621,8 @@ export default function RoomsOverview() {
                 {filteredRooms.map((r) => {
                   const occupied  = Number(r.occupied_beds  || 0);
                   const total     = Number(r.total_beds     || 0);
-                  const available = Number(r.available_beds || (total - occupied));
+                  const available = Number( (total - occupied));
+                  
                   return (
                     <div key={r.id} className="rounded-2xl border border-slate-700/60 bg-[#0a1628] p-4 hover:border-slate-600 transition-all group">
                       {/* Room header */}

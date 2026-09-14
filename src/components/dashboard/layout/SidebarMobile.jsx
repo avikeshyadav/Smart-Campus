@@ -47,6 +47,7 @@ import {
 
 import { useAuth } from "../../../context/AuthContext";
 import { BASE_URI } from "../../../config/api";
+import { hasAnyPermission, isSuperAdmin } from "../../../rbac/rbac";
 
 const iconMap = {
   Settings,
@@ -114,7 +115,7 @@ const getIconColor = (value = "") => {
 };
 
 const SidebarMobile = () => {
-  const { accessToken } = useAuth();
+  const { accessToken, user } = useAuth();
   const location = useLocation();
 
   const [open, setOpen] = useState(false);
@@ -361,6 +362,21 @@ const SidebarMobile = () => {
 
         <div className="min-h-0 flex-1 overflow-y-auto bg-slate-950 px-3 py-4">
           <nav className="space-y-2">
+
+            {(isSuperAdmin(user) || hasAnyPermission(user, ["roles.view", "permissions.view", "users.roles.assign"])) && (
+              <Link
+                to="/dashboard/accesscontrolboard"
+                className={`group flex items-center gap-3 rounded-xl border px-4 py-3 text-sm font-medium transition-all ${
+                  location.pathname.startsWith("/dashboard/accesscontrolboard")
+                    ? "border-cyan-500 bg-cyan-500/10 text-cyan-400"
+                    : "border-transparent text-slate-300 hover:border-cyan-500 hover:bg-slate-900 hover:text-cyan-400"
+                }`}
+              >
+                <ShieldCheck size={20} className="text-cyan-400" />
+                <span className="truncate">Access Control</span>
+              </Link>
+            )}
+
             {dashboardNavItems.map((item) => {
               const Icon = item.icon
                 ? iconMap[item.icon]

@@ -195,20 +195,6 @@ export default function LiveAttendanceCard({
 
         if (!cancelled) {
           await video.play();
-
-          /*
-           * Debug:
-           * Shows the ACTUAL camera resolution.
-           */
-          console.log(
-            "Actual camera resolution:",
-            `${video.videoWidth} x ${video.videoHeight}`,
-            `ratio=${(
-              video.videoWidth /
-              video.videoHeight
-            ).toFixed(3)}`
-          );
-
           /*
            * Also show MediaStream track settings.
            */
@@ -717,12 +703,6 @@ const createFaceCrop = useCallback(async () => {
     return null;
   }
 
-  console.log("FULL FRAME:", {
-    source: `${videoWidth}x${videoHeight}`,
-    output: `${videoWidth}x${videoHeight}`,
-    blobKB: (blob.size / 1024).toFixed(1),
-    type: blob.type,
-  });
 
   return {
     blob,
@@ -1255,12 +1235,6 @@ const createFaceCrop = useCallback(async () => {
                 );
               }
 
-              console.log(
-                `Face ${
-                  index + 1
-                } recognized:`,
-                apiResult
-              );
             } catch (error) {
               console.error(
                 `Face ${

@@ -1,749 +1,1177 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "react-hot-toast";
 import { BASE_URI } from "../../config/api";
+import { Percent } from "lucide-react";
 
 const StudentDashboard = () => {
   const navigate = useNavigate();
 
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [loggingOut, setLoggingOut] = useState(false);
+  // =====================================================
+  // STATE
+  // =====================================================
 
-  // ---------------------------------------
-  // Get logged-in student
-  // ---------------------------------------
+  const [dashboard, setDashboard] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const getStudent = () => {
+  // =====================================================
+  // TOKEN
+  // =====================================================
+
+  const getToken = () => {
+    return sessionStorage.getItem("Student_access_token");
+  };
+
+  // =====================================================
+  // FETCH DASHBOARD
+  // =====================================================
+
+  const fetchDashboard = async () => {
     try {
-      const studentData = sessionStorage.getItem("student");
+      setLoading(true);
 
-      if (!studentData) {
-        return null;
+      const token = getToken();
+
+      if (!token) {
+        sessionStorage.removeItem("student");
+        sessionStorage.removeItem("Student_access_token");
+
+        navigate("/student/login", {
+          replace: true,
+        });
+
+        return;
       }
 
-      return JSON.parse(studentData);
+      const response = await fetch(
+        `${BASE_URI}/api/student/studentdashboard/dashboarddata`,
+        {
+          method: "GET",
+
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+
+          credentials: "include",
+        }
+      );
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          result?.message ||
+            "Failed to fetch dashboard data"
+        );
+      }
+
+      if (!result?.success) {
+        throw new Error(
+          result?.message ||
+            "Unable to load dashboard"
+        );
+      }
+
+      setDashboard(result?.data || null);
     } catch (error) {
-      console.error("Student data parse error:", error);
-      return null;
+      console.error(
+        "Student Dashboard API Error:",
+        error
+      );
+
+      toast.error(
+        error?.message ||
+          "Unable to load dashboard"
+      );
+    } finally {
+      setLoading(false);
     }
   };
 
-  const student = getStudent();
+  // =====================================================
+  // INITIAL FETCH
+  // =====================================================
 
-  // ---------------------------------------
-  // If student session doesn't exist
-  // ---------------------------------------
+  useEffect(() => {
+    fetchDashboard();
+  }, []);
 
-  if (!student) {
-    sessionStorage.removeItem("student");
-    sessionStorage.removeItem("Student_access_token");
+  // =====================================================
+  // LOADING
+  // =====================================================
 
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
+
+  // =====================================================
+  // NO DATA
+  // =====================================================
+
+  if (!dashboard) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-100">
-        <div className="text-center">
-          <p className="mb-4 text-slate-600">
-            Session expired. Please login again.
+      <div className="flex min-h-[60vh] items-center justify-center">
+        <div className="rounded-2xl bg-white p-8 text-center shadow-sm">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-100 text-2xl">
+            ⚠️
+          </div>
+
+          <h2 className="text-xl font-bold text-slate-900">
+            Dashboard Unavailable
+          </h2>
+
+          <p className="mt-2 text-sm text-slate-500">
+            We could not load your dashboard data.
           </p>
 
           <button
-            onClick={() => navigate("/student/login", { replace: true })}
-            className="rounded-lg bg-indigo-600 px-5 py-3 font-semibold text-white hover:bg-indigo-700"
+            onClick={fetchDashboard}
+            className="mt-5 rounded-xl bg-indigo-600 px-5 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
           >
-            Go to Login
+            Retry
           </button>
         </div>
       </div>
     );
   }
 
-  // ---------------------------------------
-  // Student information
-  // ---------------------------------------
+  // =====================================================
+  // BACKEND DATA
+  // =====================================================
+
+  const student = dashboard.student || {};
+  const hostel = dashboard.hostel || null;
+
+  const attendance = dashboard.attendance || {
+    overall: null,
+    present: 0,
+    absent: null,
+    total: null,
+    currentMonth: 0,
+    today: null,
+  };
+
+  const timetable = Array.isArray(
+    dashboard.timetable
+  )
+    ? dashboard.timetable
+    : [];
+
+  const buses = Array.isArray(
+    dashboard.buses
+  )
+    ? dashboard.buses
+    : [];
+
+  const notices = Array.isArray(
+    dashboard.notices
+  )
+    ? dashboard.notices
+    : [];
+
+  const quickActions = Array.isArray(
+    dashboard.quickActions
+  )
+    ? dashboard.quickActions
+    : [];
+
+  // =====================================================
+  // STUDENT INFO
+  // =====================================================
 
   const studentName =
-    student.name ||
-    student.full_name ||
-    student.student_name ||
-    "Student";
-
-  const studentEmail =
-    student.email || "";
+    student.name || "Student";
 
   const studentDepartment =
     student.department ||
     student.course ||
     "Student";
 
-  // First letters for avatar
-  const avatarName = studentName
-    .split(" ")
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) => word.charAt(0).toUpperCase())
-    .join("");
+  const studentRollNo =
+    student.studentId ||
+    "N/A";
 
-  // ---------------------------------------
-  // Dashboard Stats
-  // ---------------------------------------
+  // =====================================================
+  // HOSTEL INFO
+  // =====================================================
 
-  const stats = [
-    {
-      title: "Attendance",
-      value: "92%",
-      subtitle: "Good standing",
-      color: "bg-green-100 text-green-700",
-    },
-    {
-      title: "Assignments",
-      value: "8",
-      subtitle: "Pending",
-      color: "bg-orange-100 text-orange-700",
-    },
-    {
-      title: "Courses",
-      value: "6",
-      subtitle: "This semester",
-      color: "bg-blue-100 text-blue-700",
-    },
-    {
-      title: "CGPA",
-      value: "8.7",
-      subtitle: "Current score",
-      color: "bg-purple-100 text-purple-700",
-    },
-  ];
+  const hostelName =
+    hostel?.name ||
+    "Hostel Not Assigned";
 
-  // ---------------------------------------
-  // Courses
-  // ---------------------------------------
+  const hostelRoom =
+    hostel?.room?.number ||
+    "N/A";
 
-  const courses = [
-    {
-      name: "Data Structures",
-      code: "CS301",
-      teacher: "Dr. Sharma",
-      progress: 78,
-      color: "bg-blue-600",
-    },
-    {
-      name: "Database Management",
-      code: "CS302",
-      teacher: "Prof. Verma",
-      progress: 65,
-      color: "bg-purple-600",
-    },
-    {
-      name: "Web Development",
-      code: "CS303",
-      teacher: "Mr. Singh",
-      progress: 85,
-      color: "bg-green-600",
-    },
-  ];
+  const hostelFloor =
+    hostel?.floor?.number ??
+    "N/A";
 
-  // ---------------------------------------
-  // Assignments
-  // ---------------------------------------
+  const hostelBed =
+    hostel?.bed?.number ||
+    "N/A";
 
-  const assignments = [
-    {
-      title: "React Project",
-      subject: "Web Development",
-      deadline: "Aug 25, 2026",
-      status: "Pending",
-    },
-    {
-      title: "SQL Queries",
-      subject: "Database Management",
-      deadline: "Aug 27, 2026",
-      status: "Pending",
-    },
-    {
-      title: "Binary Tree Assignment",
-      subject: "Data Structures",
-      deadline: "Aug 30, 2026",
-      status: "Submitted",
-    },
-  ];
+  // =====================================================
+  // ATTENDANCE
+  // =====================================================
 
-  // ---------------------------------------
-  // Logout
-  // ---------------------------------------
+  const attendancePercentage =
+    attendance.overall !== null &&
+    attendance.overall !== undefined
+      ? Number(attendance.overall)
+      : null;
 
-  const handleLogout = async () => {
-    if (loggingOut) return;
+  const presentDays = Number(
+    attendance.present || 0
+  );
 
-    setLoggingOut(true);
+  const currentMonthAttendance = Number(
+    attendance.currentMonth || 0
+  );
 
-    try {
-      // Backend logout
-      await fetch(`${BASE_URI}/api/student/logout`, {
-        method: "POST",
-        credentials: "include",
-      });
-    } catch (error) {
-      console.error("Logout API Error:", error);
-    } finally {
-      // Remove frontend session
-      sessionStorage.removeItem("student");
-      sessionStorage.removeItem("Student_access_token");
+  const todayAttendance =
+    attendance.today || null;
 
-      // Close sidebar
-      setSidebarOpen(false);
+  const todayPresent =
+    Boolean(todayAttendance);
 
-      toast.success("Logged out successfully");
+  // Backend currently returns absent/total as null
+  const hasAttendancePercentage =
+    attendancePercentage !== null;
 
-      // Redirect login
-      navigate("/student/login", {
-        replace: true,
-      });
+  // =====================================================
+  // ATTENDANCE COLOR
+  // =====================================================
 
-      setLoggingOut(false);
+  const getAttendanceColor = () => {
+    if (!hasAttendancePercentage) {
+      return {
+        text: "text-slate-600",
+        bg: "bg-slate-50",
+        bar: "bg-slate-400",
+      };
     }
+
+    if (attendancePercentage >= 75) {
+      return {
+        text: "text-green-600",
+        bg: "bg-green-50",
+        bar: "bg-green-500",
+      };
+    }
+
+    if (attendancePercentage >= 60) {
+      return {
+        text: "text-orange-600",
+        bg: "bg-orange-50",
+        bar: "bg-orange-500",
+      };
+    }
+
+    return {
+      text: "text-red-600",
+      bg: "bg-red-50",
+      bar: "bg-red-500",
+    };
   };
 
+  const attendanceColor =
+    getAttendanceColor();
+
+  // =====================================================
+  // NOTICE COUNT
+  // =====================================================
+
+  const noticeCount = notices.length;
+
+  // =====================================================
+  // RENDER
+  // =====================================================
+
   return (
-    <div className="min-h-screen bg-slate-100">
+    <div className="space-y-6">
 
-      {/* =========================================
-          MOBILE OVERLAY
-      ========================================== */}
+      {/* =================================================
+          WELCOME
+      ================================================= */}
 
-      {sidebarOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/40 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
-        />
-      )}
+      <section className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-indigo-600 via-purple-600 to-violet-600 p-6 text-white shadow-lg sm:p-8">
 
-      {/* =========================================
-          SIDEBAR
-      ========================================== */}
+        <div className="relative z-10">
 
-      <aside
-        className={`fixed inset-y-0 left-0 z-50 w-64 transform bg-slate-900 text-white transition-transform duration-300 lg:translate-x-0 ${
-          sidebarOpen
-            ? "translate-x-0"
-            : "-translate-x-full"
-        }`}
-      >
+          <p className="text-sm text-indigo-100">
+            Student Dashboard
+          </p>
 
-        {/* Logo */}
+          <h1 className="mt-1 text-2xl font-bold sm:text-3xl">
+            Welcome back, {studentName}! 👋
+          </h1>
 
-        <div className="flex h-16 items-center border-b border-slate-700 px-6">
+          <p className="mt-2 max-w-2xl text-sm text-indigo-100 sm:text-base">
+            Here is everything you need to know
+            about your hostel, attendance, 
+            timetable and campus services.
+          </p>
 
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 font-bold">
-            S
+          <div className="mt-5 flex flex-wrap gap-3">
+
+            <span className="rounded-full bg-white/15 px-4 py-2 text-sm backdrop-blur">
+              🎓 {studentDepartment}
+            </span>
+
+            <span className="rounded-full bg-white/15 px-4 py-2 text-sm backdrop-blur">
+              🪪 {studentRollNo}
+            </span>
+
+            <span className="rounded-full bg-white/15 px-4 py-2 text-sm backdrop-blur">
+              🏢 Room {hostelRoom}
+            </span>
+
           </div>
-
-          <span className="ml-3 text-lg font-bold">
-            Student Portal
-          </span>
 
         </div>
 
-        {/* Navigation */}
+        <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-white/10" />
 
-        <nav className="mt-6 px-3">
+        <div className="absolute -bottom-20 right-20 h-52 w-52 rounded-full bg-white/5" />
 
-          <SidebarItem
-            icon="🏠"
-            text="Dashboard"
-            active
-          />
+      </section>
 
-          <SidebarItem
-            icon="📚"
-            text="My Courses"
-          />
+      {/* =================================================
+          TOP STATS
+      ================================================= */}
 
-          <SidebarItem
-            icon="📝"
-            text="Assignments"
-          />
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
 
-          <SidebarItem
-            icon="📅"
-            text="Timetable"
-          />
+        <DashboardStat
+          icon="🏢"
+          title="Hostel Room"
+          value={hostelRoom}
+          subtitle={hostelName}
+          color="bg-purple-100 text-purple-700"
+        />
 
-          <SidebarItem
-            icon="📊"
-            text="Grades"
-          />
+        <DashboardStat
+          icon="📊"
+          title="Attendance"
+          value={
+            hasAttendancePercentage
+              ? `${attendancePercentage}%`
+              : "Percentage : N/A"
+          }
+          subtitle={
+            hasAttendancePercentage
+              ? `${presentDays} days present`
+              : `${presentDays} days marked`
+          }
+          color="bg-green-100 text-green-700"
+        />
 
-          <SidebarItem
-            icon="📢"
-            text="Announcements"
-          />
+        <DashboardStat
+          icon="📅"
+          title="Today's Classes"
+          value={timetable.length}
+          subtitle={
+            timetable.length > 0
+              ? "Classes scheduled"
+              : "No classes scheduled"
+          }
+          color="bg-blue-100 text-blue-700"
+        />
 
-          <SidebarItem
-            icon="💬"
-            text="Messages"
-          />
+        <DashboardStat
+          icon="📢"
+          title="New Notices"
+          value={noticeCount}
+          subtitle={
+            noticeCount > 0
+              ? "Latest updates"
+              : "No active notices"
+          }
+          color="bg-orange-100 text-orange-700"
+        />
 
-          <div className="my-5 border-t border-slate-700" />
+      </section>
 
-          <SidebarItem
-            icon="👤"
-            text="Profile"
-          />
+      {/* =================================================
+          HOSTEL + TIMETABLE
+      ================================================= */}
 
-          <SidebarItem
-            icon="⚙️"
-            text="Settings"
-          />
+      <div className="grid gap-6 xl:grid-cols-3">
 
-          {/* Logout */}
+        {/* HOSTEL */}
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            disabled={loggingOut}
-            className="mb-1 flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm text-slate-300 transition hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <span>
-              🚪
+        <section className="rounded-2xl bg-white p-5 shadow-sm xl:col-span-1">
+
+          <div className="mb-5 flex items-center justify-between">
+
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                My Hostel
+              </h2>
+
+              <p className="text-sm text-slate-500">
+                Your accommodation details
+              </p>
+            </div>
+
+            <span className="rounded-lg bg-indigo-50 px-3 py-2 text-xl">
+              🏢
             </span>
 
-            <span>
-              {loggingOut
-                ? "Logging out..."
-                : "Logout"}
-            </span>
-          </button>
-
-        </nav>
-      </aside>
-
-      {/* =========================================
-          MAIN
-      ========================================== */}
-
-      <div className="lg:pl-64">
-
-        {/* =====================================
-            HEADER
-        ====================================== */}
-
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b bg-white px-4 shadow-sm sm:px-6">
-
-          {/* Mobile menu */}
-
-          <button
-            onClick={() => setSidebarOpen(true)}
-            className="rounded-lg p-2 hover:bg-slate-100 lg:hidden"
-            aria-label="Open menu"
-          >
-            ☰
-          </button>
-
-          {/* Desktop title */}
-
-          <div className="hidden lg:block">
-            <h1 className="text-xl font-bold text-slate-900">
-              Dashboard
-            </h1>
           </div>
 
-          {/* Header Right */}
+          {!hostel ? (
+            <div className="rounded-xl bg-slate-50 p-6 text-center">
+              <div className="text-3xl">
+                🏢
+              </div>
 
-          <div className="ml-auto flex items-center gap-4">
+              <p className="mt-3 font-semibold text-slate-700">
+                Hostel Not Assigned
+              </p>
 
-            {/* Notification */}
+              <p className="mt-1 text-xs text-slate-500">
+                No active hostel allocation found.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl bg-gradient-to-br from-indigo-50 to-purple-50 p-4">
+
+                <div className="flex items-start justify-between gap-3">
+
+                  <div>
+                    <h3 className="font-bold text-slate-900">
+                      {hostel.name ||
+                        "Hostel"}
+                    </h3>
+
+                    {hostel.code && (
+                      <p className="mt-1 text-xs text-slate-500">
+                        Code: {hostel.code}
+                      </p>
+                    )}
+                  </div>
+
+                  {hostel.status && (
+                    <span className="rounded-full bg-green-100 px-2 py-1 text-[10px] font-bold text-green-700">
+                      {hostel.status}
+                    </span>
+                  )}
+
+                </div>
+
+                <div className="mt-4 grid grid-cols-2 gap-3">
+
+                  <InfoItem
+                    label="Room"
+                    value={hostelRoom}
+                  />
+
+                  <InfoItem
+                    label="Floor"
+                    value={
+                      hostelFloor !==
+                      "N/A"
+                        ? hostelFloor
+                        : "N/A"
+                    }
+                  />
+
+                  <InfoItem
+                    label="Bed"
+                    value={hostelBed}
+                  />
+
+                  <InfoItem
+                    label="Room Type"
+                    value={
+                      hostel.room?.type ||
+                      "N/A"
+                    }
+                  />
+
+                </div>
+
+              </div>
+
+              <div className="mt-4 rounded-xl border border-slate-100 p-4">
+
+                <div className="flex items-center justify-between">
+
+                  <div>
+                    <p className="text-xs text-slate-500">
+                      Occupancy
+                    </p>
+
+                    <p className="mt-1 font-semibold text-slate-800">
+                      {hostel.room?.occupiedBeds ??
+                        0}
+                      {" / "}
+                      {hostel.room?.totalBeds ??
+                        0}{" "}
+                      beds
+                    </p>
+                  </div>
+
+                  <span className="text-xl">
+                    🛏️
+                  </span>
+
+                </div>
+
+              </div>
+            </>
+          )}
+
+          <button
+            onClick={() =>
+              navigate("/student/hostel")
+            }
+            className="mt-4 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+          >
+            View Hostel Details
+          </button>
+
+        </section>
+
+        {/* TIMETABLE */}
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm xl:col-span-2">
+
+          <div className="mb-5 flex items-center justify-between">
+
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                Today's Timetable
+              </h2>
+
+              <p className="text-sm text-slate-500">
+                Your classes for today
+              </p>
+            </div>
 
             <button
-              className="relative rounded-full p-2 hover:bg-slate-100"
-              aria-label="Notifications"
+              onClick={() =>
+                navigate("/student/timetable")
+              }
+              className="text-sm font-semibold text-indigo-600 hover:text-indigo-700"
             >
-              🔔
-
-              <span className="absolute right-1 top-1 h-2 w-2 rounded-full bg-red-500" />
+              View All
             </button>
 
-            {/* Profile */}
+          </div>
 
-            <div className="flex items-center gap-3">
+          {timetable.length === 0 ? (
+            <div className="rounded-xl bg-slate-50 p-8 text-center">
 
-              <div className="hidden text-right sm:block">
+              <div className="text-3xl">
+                📅
+              </div>
 
-                <p className="text-sm font-semibold text-slate-900">
-                  {studentName}
-                </p>
+              <p className="mt-3 font-semibold text-slate-700">
+                No classes scheduled
+              </p>
 
-                <p className="text-xs text-slate-500">
-                  {studentDepartment}
-                </p>
+              <p className="mt-1 text-xs text-slate-500">
+                There are no timetable entries
+                for today.
+              </p>
+
+            </div>
+          ) : (
+            <div className="space-y-3">
+
+              {timetable.map(
+                (item, index) => (
+
+                  <div
+                    key={
+                      item.id ||
+                      index
+                    }
+                    className="flex items-center gap-4 rounded-xl border border-slate-100 p-4 transition hover:border-indigo-100 hover:bg-indigo-50/30"
+                  >
+
+                    <div className="h-12 w-1.5 rounded-full bg-indigo-500" />
+
+                    <div className="min-w-[100px]">
+
+                      <p className="text-sm font-bold text-slate-900">
+                        {item.time ||
+                          "Time N/A"}
+                      </p>
+
+                      {item.endTime && (
+                        <p className="text-xs text-slate-400">
+                          to {item.endTime}
+                        </p>
+                      )}
+
+                      <p className="mt-1 text-xs text-slate-400">
+                        {item.type ||
+                          "Lecture"}
+                      </p>
+
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+
+                      <h3 className="font-semibold text-slate-900">
+                        {item.subject ||
+                          "Subject"}
+                      </h3>
+
+                      {item.room && (
+                        <p className="mt-1 text-sm text-slate-500">
+                          📍 {item.room}
+                        </p>
+                      )}
+
+                    </div>
+
+                    <span className="hidden rounded-full bg-green-50 px-3 py-1 text-xs font-semibold text-green-600 sm:block">
+                      Scheduled
+                    </span>
+
+                  </div>
+
+                )
+              )}
+
+            </div>
+          )}
+
+        </section>
+
+      </div>
+
+      {/* =================================================
+          ATTENDANCE + BUS
+      ================================================= */}
+
+      <div className="grid gap-6 lg:grid-cols-2">
+
+        {/* ATTENDANCE */}
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+
+          <div className="mb-5 flex items-center justify-between">
+
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                Attendance
+              </h2>
+
+              <p className="text-sm text-slate-500">
+                Daily attendance status
+              </p>
+            </div>
+
+            <div
+              className={`rounded-xl px-4 py-2 ${attendanceColor.bg}`}
+            >
+              <span
+                className={`text-lg font-bold ${attendanceColor.text}`}
+              >
+                {hasAttendancePercentage
+                  ? `${attendancePercentage}%`
+                  : "N/A"}
+              </span>
+            </div>
+
+          </div>
+
+          {/* PERCENTAGE */}
+
+          <div className="mb-5">
+
+            <div className="mb-2 flex justify-between text-sm">
+
+              <span className="text-slate-500">
+                Overall Attendance
+              </span>
+
+              <span className="font-semibold text-slate-900">
+                {hasAttendancePercentage
+                  ? `${attendancePercentage}%`
+                  : "Not calculated"}
+              </span>
+
+            </div>
+
+            <div className="h-3 overflow-hidden rounded-full bg-slate-100">
+
+              {hasAttendancePercentage ? (
+                <div
+                  className={`h-full rounded-full transition-all duration-500 ${attendanceColor.bar}`}
+                  style={{
+                    width: `${Math.min(
+                      Math.max(
+                        attendancePercentage,
+                        0
+                      ),
+                      100
+                    )}%`,
+                  }}
+                />
+              ) : (
+                <div className="h-full w-0" />
+              )}
+
+            </div>
+
+            {!hasAttendancePercentage && (
+              <p className="mt-2 text-xs text-slate-400">
+                Attendance percentage will be
+                available when working/class
+                days are configured.
+              </p>
+            )}
+
+          </div>
+
+          {/* SUMMARY */}
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+
+            <AttendanceBox
+              label="Present Days"
+              value={presentDays}
+              color="text-green-600 bg-green-50"
+            />
+
+            <AttendanceBox
+              label="This Month"
+              value={currentMonthAttendance}
+              color="text-indigo-600 bg-indigo-50"
+            />
+
+            <AttendanceBox
+              label="Absent"
+              value={
+                attendance.absent ??
+                "N/A"
+              }
+              color="text-red-600 bg-red-50"
+            />
+
+          </div>
+
+          {/* TODAY */}
+
+          <div
+            className={`mt-4 rounded-xl border p-4 ${
+              todayPresent
+                ? "border-green-100 bg-green-50"
+                : "border-slate-100 bg-slate-50"
+            }`}
+          >
+
+            <div className="flex items-center justify-between">
+
+              <div className="flex items-center gap-3">
+
+                <div
+                  className={`flex h-10 w-10 items-center justify-center rounded-full ${
+                    todayPresent
+                      ? "bg-green-100 text-green-600"
+                      : "bg-slate-200 text-slate-500"
+                  }`}
+                >
+                  {todayPresent
+                    ? "✓"
+                    : "—"}
+                </div>
+
+                <div>
+
+                  <p className="text-sm font-semibold text-slate-800">
+                    Today's Attendance
+                  </p>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    {todayPresent
+                      ? "Attendance marked"
+                      : "Attendance not marked"}
+                  </p>
+
+                </div>
 
               </div>
 
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-indigo-600 font-bold text-white">
-                {avatarName || "S"}
+              <span
+                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                  todayPresent
+                    ? "bg-green-100 text-green-700"
+                    : "bg-slate-200 text-slate-600"
+                }`}
+              >
+                {todayPresent
+                  ? "Present"
+                  : "Not Marked"}
+              </span>
+
+            </div>
+
+            {todayAttendance?.marked_at && (
+              <p className="mt-3 text-xs text-slate-500">
+                Marked at{" "}
+                {formatTime(
+                  todayAttendance.marked_at
+                )}
+              </p>
+            )}
+
+            {todayAttendance?.confidence !==
+              null &&
+              todayAttendance?.confidence !==
+                undefined && (
+                <p className="mt-1 text-xs text-slate-400">
+                  Confidence:{" "}
+                  {Number(
+                    todayAttendance.confidence
+                  ).toFixed(1)}
+                </p>
+              )}
+
+          </div>
+
+          <button
+            onClick={() =>
+              navigate("/student/attendance")
+            }
+            className="mt-5 w-full rounded-xl border border-slate-200 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            View Daily Attendance
+          </button>
+
+        </section>
+
+        {/* BUS */}
+
+        <section className="rounded-2xl bg-white p-5 shadow-sm">
+
+          <div className="mb-5 flex items-center justify-between">
+
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">
+                Bus Schedule
+              </h2>
+
+              <p className="text-sm text-slate-500">
+                Campus transportation
+              </p>
+            </div>
+
+            <span className="rounded-xl bg-green-50 px-3 py-2 text-xl">
+              🚌
+            </span>
+
+          </div>
+
+          {buses.length === 0 ? (
+            <div className="rounded-xl bg-slate-50 p-8 text-center">
+
+              <div className="text-3xl">
+                🚌
               </div>
+
+              <p className="mt-3 font-semibold text-slate-700">
+                No bus schedule available
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500">
+                No active bus schedules were
+                found.
+              </p>
+
+            </div>
+          ) : (
+            <div className="space-y-3">
+
+              {buses.map(
+                (bus, index) => (
+
+                  <div
+                    key={
+                      bus.id ||
+                      index
+                    }
+                    className="flex items-center gap-4 rounded-xl border border-slate-100 p-4"
+                  >
+
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-indigo-50">
+                      🚌
+                    </div>
+
+                    <div className="min-w-0 flex-1">
+
+                      <h3 className="text-sm font-semibold text-slate-900">
+                        {bus.route ||
+                          "Bus Route"}
+                      </h3>
+
+                      <p className="mt-1 text-xs text-slate-500">
+                        {bus.time ||
+                          "Time N/A"}
+                      </p>
+
+                    </div>
+
+                    <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-600">
+                      {bus.status ||
+                        "Scheduled"}
+                    </span>
+
+                  </div>
+
+                )
+              )}
+
+            </div>
+          )}
+
+          <button
+            onClick={() =>
+              navigate("/student/bus")
+            }
+            className="mt-5 w-full rounded-xl bg-indigo-600 py-3 text-sm font-semibold text-white transition hover:bg-indigo-700"
+          >
+            View Full Bus Schedule
+          </button>
+
+        </section>
+
+      </div>
+
+      {/* =================================================
+          NOTICES
+      ================================================= */}
+
+      <section className="rounded-2xl bg-white p-5 shadow-sm">
+
+        <div className="mb-5 flex items-center justify-between">
+
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">
+              Important Notices
+            </h2>
+
+            <p className="text-sm text-slate-500">
+              Latest college and hostel updates
+            </p>
+          </div>
+
+          <button
+            onClick={() =>
+              navigate("/student/notices")
+            }
+            className="text-sm font-semibold text-indigo-600 hover:text-indigo-700"
+          >
+            View All
+          </button>
+
+        </div>
+
+        {notices.length === 0 ? (
+          <div className="rounded-xl bg-slate-50 p-8 text-center">
+
+            <div className="text-3xl">
+              📢
+            </div>
+
+            <p className="mt-3 font-semibold text-slate-700">
+              No active notices
+            </p>
+
+            <p className="mt-1 text-xs text-slate-500">
+              There are currently no notices
+              available for you.
+            </p>
+
+          </div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-3">
+
+            {notices.slice(0, 3).map(
+              (notice, index) => (
+
+                <NoticeCard
+                  key={
+                    notice.id ||
+                    index
+                  }
+                  notice={notice}
+                />
+
+              )
+            )}
+
+          </div>
+        )}
+
+      </section>
+
+      {/* =================================================
+          QUICK ACTIONS
+      ================================================= */}
+
+      {quickActions.length > 0 && (
+        <section>
+
+          <div className="mb-4">
+
+            <h2 className="text-lg font-bold text-slate-900">
+              Quick Actions
+            </h2>
+
+            <p className="text-sm text-slate-500">
+              Frequently used student services
+            </p>
+
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+
+            {quickActions.map(
+              (action, index) => (
+
+                <button
+                  key={
+                    action.title ||
+                    index
+                  }
+                  onClick={() =>
+                    action.path &&
+                    navigate(action.path)
+                  }
+                  className="flex items-center gap-4 rounded-2xl bg-white p-4 text-left shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+                >
+
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-indigo-50 text-xl">
+                    {action.icon ||
+                      "➡️"}
+                  </div>
+
+                  <div>
+
+                    <p className="font-semibold text-slate-900">
+                      {action.title ||
+                        "Open Service"}
+                    </p>
+
+                    <p className="mt-1 text-xs text-slate-500">
+                      Open service
+                    </p>
+
+                  </div>
+
+                </button>
+
+              )
+            )}
+
+          </div>
+
+        </section>
+      )}
+
+      {/* =================================================
+          AI ASSISTANT
+      ================================================= */}
+
+      <section className="overflow-hidden rounded-2xl bg-gradient-to-r from-slate-900 to-indigo-950 p-6 text-white shadow-lg">
+
+        <div className="flex flex-col gap-5 md:flex-row md:items-center md:justify-between">
+
+          <div className="flex items-start gap-4">
+
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-indigo-500 text-2xl shadow-lg">
+              🤖
+            </div>
+
+            <div>
+
+              <div className="flex items-center gap-2">
+
+                <h2 className="text-lg font-bold">
+                  Smart Campus AI Assistant
+                </h2>
+
+                <span className="rounded-full bg-green-500/20 px-2 py-1 text-[10px] font-semibold text-green-300">
+                  ONLINE
+                </span>
+
+              </div>
+
+              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-300">
+                Ask me about your timetable,
+                attendance, hostel, bus timings,
+                notices, complaints and campus
+                services.
+              </p>
 
             </div>
 
           </div>
 
-        </header>
-
-        {/* =====================================
-            CONTENT
-        ====================================== */}
-
-        <main className="p-4 sm:p-6 lg:p-8">
-
-          {/* Welcome */}
-
-          <section className="mb-8 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 p-6 text-white shadow-lg">
-
-            <p className="mb-1 text-sm text-indigo-100">
-              Today
-            </p>
-
-            <h2 className="text-2xl font-bold sm:text-3xl">
-              Welcome back, {studentName}! 👋
-            </h2>
-
-            <p className="mt-2 max-w-xl text-sm text-indigo-100 sm:text-base">
-              Here's what's happening with your studies today.
-            </p>
-
-          </section>
-
-          {/* Stats */}
-
-          <section className="mb-8 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-
-            {stats.map((stat) => (
-              <div
-                key={stat.title}
-                className="rounded-xl bg-white p-5 shadow-sm transition hover:-translate-y-1 hover:shadow-md"
-              >
-
-                <div className="flex items-center justify-between">
-
-                  <div>
-
-                    <p className="text-sm text-slate-500">
-                      {stat.title}
-                    </p>
-
-                    <h3 className="mt-1 text-2xl font-bold text-slate-900">
-                      {stat.value}
-                    </h3>
-
-                    <p className="mt-1 text-xs text-slate-500">
-                      {stat.subtitle}
-                    </p>
-
-                  </div>
-
-                  <div
-                    className={`rounded-lg px-3 py-2 text-xs font-semibold ${stat.color}`}
-                  >
-                    ↗
-                  </div>
-
-                </div>
-
-              </div>
-            ))}
-
-          </section>
-
-          {/* Main Grid */}
-
-          <div className="grid gap-6 xl:grid-cols-3">
-
-            {/* Courses */}
-
-            <section className="rounded-xl bg-white p-5 shadow-sm xl:col-span-2">
-
-              <div className="mb-5 flex items-center justify-between">
-
-                <div>
-
-                  <h2 className="text-lg font-bold text-slate-900">
-                    My Courses
-                  </h2>
-
-                  <p className="text-sm text-slate-500">
-                    Your current semester courses
-                  </p>
-
-                </div>
-
-                <button className="text-sm font-semibold text-indigo-600 hover:text-indigo-700">
-                  View all
-                </button>
-
-              </div>
-
-              <div className="space-y-5">
-
-                {courses.map((course) => (
-                  <div
-                    key={course.code}
-                    className="rounded-lg border border-slate-200 p-4"
-                  >
-
-                    <div className="flex flex-col justify-between gap-3 sm:flex-row">
-
-                      <div>
-
-                        <h3 className="font-semibold text-slate-900">
-                          {course.name}
-                        </h3>
-
-                        <p className="mt-1 text-sm text-slate-500">
-                          {course.code} • {course.teacher}
-                        </p>
-
-                      </div>
-
-                      <span className="text-sm font-semibold text-slate-700">
-                        {course.progress}%
-                      </span>
-
-                    </div>
-
-                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-slate-100">
-
-                      <div
-                        className={`h-full rounded-full ${course.color}`}
-                        style={{
-                          width: `${course.progress}%`,
-                        }}
-                      />
-
-                    </div>
-
-                  </div>
-                ))}
-
-              </div>
-
-            </section>
-
-            {/* Today's Classes */}
-
-            <section className="rounded-xl bg-white p-5 shadow-sm">
-
-              <div className="mb-5">
-
-                <h2 className="text-lg font-bold text-slate-900">
-                  Today's Classes
-                </h2>
-
-                <p className="text-sm text-slate-500">
-                  Your upcoming lectures
-                </p>
-
-              </div>
-
-              <div className="space-y-4">
-
-                <ClassItem
-                  time="10:00 AM"
-                  subject="Data Structures"
-                  room="Room 204"
-                  color="bg-blue-500"
-                />
-
-                <ClassItem
-                  time="12:00 PM"
-                  subject="Database Management"
-                  room="Lab 3"
-                  color="bg-purple-500"
-                />
-
-                <ClassItem
-                  time="02:30 PM"
-                  subject="Web Development"
-                  room="Room 105"
-                  color="bg-green-500"
-                />
-
-              </div>
-
-            </section>
-
-          </div>
-
-          {/* Bottom Grid */}
-
-          <div className="mt-6 grid gap-6 xl:grid-cols-2">
-
-            {/* Assignments */}
-
-            <section className="rounded-xl bg-white p-5 shadow-sm">
-
-              <div className="mb-5 flex items-center justify-between">
-
-                <div>
-
-                  <h2 className="text-lg font-bold text-slate-900">
-                    Assignments
-                  </h2>
-
-                  <p className="text-sm text-slate-500">
-                    Track your upcoming work
-                  </p>
-
-                </div>
-
-                <button className="text-sm font-semibold text-indigo-600">
-                  View all
-                </button>
-
-              </div>
-
-              <div className="divide-y divide-slate-100">
-
-                {assignments.map((assignment) => (
-                  <div
-                    key={assignment.title}
-                    className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-
-                    <div>
-
-                      <h3 className="font-semibold text-slate-900">
-                        {assignment.title}
-                      </h3>
-
-                      <p className="text-sm text-slate-500">
-                        {assignment.subject}
-                      </p>
-
-                      <p className="mt-1 text-xs text-slate-400">
-                        Due: {assignment.deadline}
-                      </p>
-
-                    </div>
-
-                    <span
-                      className={`w-fit rounded-full px-3 py-1 text-xs font-semibold ${
-                        assignment.status ===
-                        "Submitted"
-                          ? "bg-green-100 text-green-700"
-                          : "bg-orange-100 text-orange-700"
-                      }`}
-                    >
-                      {assignment.status}
-                    </span>
-
-                  </div>
-                ))}
-
-              </div>
-
-            </section>
-
-            {/* Notifications */}
-
-            <section className="rounded-xl bg-white p-5 shadow-sm">
-
-              <div className="mb-5">
-
-                <h2 className="text-lg font-bold text-slate-900">
-                  Recent Notifications
-                </h2>
-
-                <p className="text-sm text-slate-500">
-                  Latest updates from your college
-                </p>
-
-              </div>
-
-              <div className="space-y-4">
-
-                <Notification
-                  icon="📢"
-                  title="Exam schedule released"
-                  message="Mid-semester examination schedule is now available."
-                  time="2 hours ago"
-                />
-
-                <Notification
-                  icon="📚"
-                  title="New assignment"
-                  message="Your Web Development assignment has been posted."
-                  time="5 hours ago"
-                />
-
-                <Notification
-                  icon="🎓"
-                  title="Attendance updated"
-                  message="Your attendance has been updated for this week."
-                  time="Yesterday"
-                />
-
-              </div>
-
-            </section>
-
-          </div>
-
-        </main>
-
-      </div>
+          <button
+            onClick={() =>
+              navigate("/student/assistant")
+            }
+            className="rounded-xl bg-white px-5 py-3 text-sm font-bold text-slate-900 transition hover:bg-indigo-50"
+          >
+            Ask AI Assistant →
+          </button>
+
+        </div>
+
+      </section>
 
     </div>
   );
 };
 
-// =============================================
-// SIDEBAR ITEM
-// =============================================
+// =====================================================
+// DASHBOARD STAT
+// =====================================================
 
-const SidebarItem = ({
+const DashboardStat = ({
   icon,
-  text,
-  active = false,
-}) => {
-  return (
-    <button
-      type="button"
-      className={`mb-1 flex w-full items-center gap-3 rounded-lg px-4 py-3 text-left text-sm transition ${
-        active
-          ? "bg-indigo-600 text-white"
-          : "text-slate-300 hover:bg-slate-800 hover:text-white"
-      }`}
-    >
-      <span>{icon}</span>
-      <span>{text}</span>
-    </button>
-  );
-};
-
-// =============================================
-// CLASS ITEM
-// =============================================
-
-const ClassItem = ({
-  time,
-  subject,
-  room,
+  title,
+  value,
+  subtitle,
   color,
 }) => {
   return (
-    <div className="flex gap-3 rounded-lg border border-slate-100 p-3">
+    <div className="rounded-2xl bg-white p-5 shadow-sm">
 
-      <div
-        className={`w-1 rounded-full ${color}`}
-      />
+      <div className="flex items-start justify-between">
 
-      <div>
+        <div>
 
-        <p className="text-sm font-semibold text-slate-900">
-          {subject}
-        </p>
+          <p className="text-sm text-slate-500">
+            {title}
+          </p>
 
-        <p className="mt-1 text-xs text-slate-500">
-          {time} • {room}
-        </p>
+          <h3 className="mt-1 text-2xl font-bold text-slate-900">
+            {value}
+          </h3>
+
+          <p className="mt-1 text-xs text-slate-400">
+            {subtitle}
+          </p>
+
+        </div>
+
+        <div
+          className={`flex h-11 w-11 items-center justify-center rounded-xl text-lg ${color}`}
+        >
+          {icon}
+        </div>
 
       </div>
 
@@ -751,36 +1179,215 @@ const ClassItem = ({
   );
 };
 
-// =============================================
-// NOTIFICATION
-// =============================================
+// =====================================================
+// INFO ITEM
+// =====================================================
 
-const Notification = ({
-  icon,
-  title,
-  message,
-  time,
+const InfoItem = ({
+  label,
+  value,
 }) => {
   return (
-    <div className="flex gap-3 border-b border-slate-100 pb-4 last:border-0 last:pb-0">
+    <div className="rounded-lg bg-white p-3">
 
-      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100">
-        {icon}
+      <p className="text-xs text-slate-400">
+        {label}
+      </p>
+
+      <p className="mt-1 text-sm font-semibold text-slate-800">
+        {value || "N/A"}
+      </p>
+
+    </div>
+  );
+};
+
+// =====================================================
+// ATTENDANCE BOX
+// =====================================================
+
+const AttendanceBox = ({
+  label,
+  value,
+  color,
+}) => {
+  return (
+    <div
+      className={`rounded-xl p-3 text-center ${color}`}
+    >
+
+      <p className="text-xl font-bold">
+        {value}
+      </p>
+
+      <p className="mt-1 text-xs">
+        {label}
+      </p>
+
+    </div>
+  );
+};
+
+// =====================================================
+// NOTICE CARD
+// =====================================================
+
+const NoticeCard = ({
+  notice,
+}) => {
+  const getNoticeColor = () => {
+    switch (notice.priority) {
+      case "urgent":
+        return "bg-red-100 text-red-700";
+
+      case "high":
+        return "bg-orange-100 text-orange-700";
+
+      case "low":
+        return "bg-slate-100 text-slate-600";
+
+      default:
+        return "bg-blue-100 text-blue-700";
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-slate-100 p-4 transition hover:border-indigo-100 hover:shadow-sm">
+
+      <div className="flex items-start gap-3">
+
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${getNoticeColor()}`}
+        >
+          📢
+        </div>
+
+        <div className="min-w-0 flex-1">
+
+          <div className="flex items-start justify-between gap-2">
+
+            <h3 className="text-sm font-semibold text-slate-900">
+              {notice.title ||
+                "Notice"}
+            </h3>
+
+            {notice.priority &&
+              notice.priority !==
+                "normal" && (
+                <span
+                  className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-bold uppercase ${getNoticeColor()}`}
+                >
+                  {notice.priority}
+                </span>
+              )}
+
+          </div>
+
+          <p className="mt-2 text-xs leading-5 text-slate-500">
+            {notice.message ||
+              "No message available."}
+          </p>
+
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+
+            {notice.type && (
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-600">
+                {notice.type}
+              </span>
+            )}
+
+            {notice.createdBy && (
+              <span className="text-[10px] text-slate-400">
+                By {notice.createdBy}
+              </span>
+            )}
+
+          </div>
+
+        </div>
+
       </div>
 
-      <div>
+    </div>
+  );
+};
 
-        <h3 className="text-sm font-semibold text-slate-900">
-          {title}
-        </h3>
+// =====================================================
+// FORMAT TIME
+// =====================================================
 
-        <p className="mt-1 text-xs leading-5 text-slate-500">
-          {message}
-        </p>
+const formatTime = (value) => {
+  if (!value) {
+    return "";
+  }
 
-        <p className="mt-1 text-xs text-slate-400">
-          {time}
-        </p>
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleTimeString(
+    "en-IN",
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  );
+};
+
+// =====================================================
+// SKELETON
+// =====================================================
+
+const DashboardSkeleton = () => {
+  return (
+    <div className="space-y-6">
+
+      <section className="animate-pulse rounded-2xl bg-slate-200 p-8">
+
+        <div className="h-4 w-24 rounded bg-slate-300" />
+
+        <div className="mt-3 h-8 w-72 rounded bg-slate-300" />
+
+        <div className="mt-3 h-4 w-full max-w-2xl rounded bg-slate-300" />
+
+        <div className="mt-5 flex gap-3">
+
+          <div className="h-9 w-32 rounded-full bg-slate-300" />
+          <div className="h-9 w-28 rounded-full bg-slate-300" />
+          <div className="h-9 w-28 rounded-full bg-slate-300" />
+
+        </div>
+
+      </section>
+
+      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+
+        {[1, 2, 3, 4].map(
+          (item) => (
+            <div
+              key={item}
+              className="h-32 animate-pulse rounded-2xl bg-slate-200"
+            />
+          )
+        )}
+
+      </section>
+
+      <div className="grid gap-6 xl:grid-cols-3">
+
+        <div className="h-96 animate-pulse rounded-2xl bg-slate-200" />
+
+        <div className="h-96 animate-pulse rounded-2xl bg-slate-200 xl:col-span-2" />
+
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+
+        <div className="h-96 animate-pulse rounded-2xl bg-slate-200" />
+
+        <div className="h-96 animate-pulse rounded-2xl bg-slate-200" />
 
       </div>
 

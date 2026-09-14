@@ -14,7 +14,7 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-const Topbar = ({ title = "Dashboard" }) => {
+const Topbar = () => {
   const { user, logout, accessToken } = useAuth();
   const dropdownRef = useRef(null);
   const searchRef = useRef(null);
@@ -133,15 +133,6 @@ const Topbar = ({ title = "Dashboard" }) => {
     setShowSearchResults(false);
   };
 
-  // const image =
-  //   student?.image ||
-  //   null;
-
-  // const imageUrl = image
-  //   ? image.startsWith("http")
-  //     ? image
-  //     : `${baseUri}${image}`
-  //   : null;
 
   return (
     <header
@@ -195,7 +186,8 @@ const Topbar = ({ title = "Dashboard" }) => {
             md:flex
           "
         >
-          {title}
+          {user?.roles[0].name}
+        
         </h1>
       </div>
 
@@ -398,7 +390,7 @@ const Topbar = ({ title = "Dashboard" }) => {
             onClick={() =>
               setOpenProfile(!openProfile)
             }
-            className="
+            className={`
               flex
               items-center
               gap-3
@@ -410,7 +402,7 @@ const Topbar = ({ title = "Dashboard" }) => {
               py-2
               transition
               hover:border-cyan-500
-            "
+            `}
           >
             <img
               src={user?.avatar_url || ""}
@@ -446,7 +438,7 @@ const Topbar = ({ title = "Dashboard" }) => {
                   text-slate-400
                 "
               >
-                {user?.role}
+                {user?.roles[0].name}
               </p>
             </div>
 

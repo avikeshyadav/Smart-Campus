@@ -39,6 +39,7 @@ const sendNotification = async ({
 // Get Dashboard Modules
 // =====================================================
 async function getModules(req, res) {
+  
   const query = `
     SELECT
       id,
@@ -58,7 +59,6 @@ async function getModules(req, res) {
   db.query(query, (err, rows) => {
     if (err) {
       console.error("Get modules error:", err);
-
       return res.status(500).json({
         success: false,
         message: "Database Error",

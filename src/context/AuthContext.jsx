@@ -7,27 +7,110 @@ import {
   useRef,
   useState,
 } from "react";
+
 import { BASE_URI } from "../config/api";
+import { isSuperAdmin } from "../rbac/rbac";
+import { getRbacMe } from "../rbac/rbacApi";
+
 const AuthContext = createContext(undefined);
+
+/* =========================================================
+   NORMALIZE USER
+========================================================= */
+const normalizeUser = (data) => {
+  if (!data) return null;
+
+  const user = data?.user || data;
+
+  const roles = Array.isArray(user?.roles)
+    ? user.roles
+    : [];
+
+  const permissions = Array.isArray(user?.permissions)
+    ? user.permissions
+    : [];
+
+  return {
+    ...user,
+    roles,
+    permissions,
+    isSuperAdmin:
+      user?.isSuperAdmin === true ||
+      isSuperAdmin(user),
+  };
+};
+
 export const AuthProvider = ({ children }) => {
   const [accessToken, setAccessToken] = useState(null);
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
+
   const accessTokenRef = useRef(null);
+
+  /* =========================================================
+     KEEP TOKEN REF UPDATED
+  ========================================================= */
   useEffect(() => {
     accessTokenRef.current = accessToken;
   }, [accessToken]);
 
-  const login = useCallback((token, userData) => {
-    accessTokenRef.current = token;
-    setAccessToken(token);
-    setUser(userData);
+  /* =========================================================
+     LOAD RBAC FROM BACKEND
+  ========================================================= */
+  const loadRBAC = useCallback(async (token) => {
+    if (!token) {
+      console.log("RBAC: No access token");
+      return null;
+    }
+
+    try {
+      const data = await getRbacMe(token);
+      const rbacUser = normalizeUser(data); 
+
+      setUser((currentUser) => ({
+        ...(currentUser || {}),
+        ...(rbacUser || {}),
+        roles: rbacUser?.roles || [],
+        permissions: rbacUser?.permissions || [],
+        isSuperAdmin: rbacUser?.isSuperAdmin === true,
+      }));
+
+      return rbacUser;
+    } catch (error) {
+      console.error("RBAC load failed:", error);
+
+      /*
+        RBAC failure should not automatically logout the user.
+        Authentication and authorization are separate concerns.
+      */
+
+      return null;
+    }
   }, []);
 
+  /* =========================================================
+     LOGIN
+  ========================================================= */
+  const login = useCallback(
+    async (token, userData) => {
+
+      accessTokenRef.current = token;
+      setAccessToken(token);
+      setUser(normalizeUser(userData));
+      await loadRBAC(token);
+    },
+    [loadRBAC]
+  );
+
+  /* =========================================================
+     LOGOUT
+  ========================================================= */
   const logout = useCallback(async () => {
     accessTokenRef.current = null;
+
     setAccessToken(null);
     setUser(null);
+
     try {
       await fetch(`${BASE_URI}/api/logout`, {
         method: "GET",
@@ -38,6 +121,9 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  /* =========================================================
+     REFRESH TOKEN
+  ========================================================= */
   const tryRefresh = useCallback(async () => {
     try {
       const res = await fetch(`${BASE_URI}/api/refresh`, {
@@ -47,42 +133,55 @@ export const AuthProvider = ({ children }) => {
 
       if (!res.ok) {
         accessTokenRef.current = null;
+
         setAccessToken(null);
         setUser(null);
+
         return null;
       }
 
       const data = await res.json();
+      const newToken = data.accessToken;
 
-      accessTokenRef.current = data.accessToken;
-      setAccessToken(data.accessToken);
+      accessTokenRef.current = newToken;
+      setAccessToken(newToken);
 
+      /*
+        Refresh response may contain user,
+        but ALWAYS load latest RBAC from DB.
+      */
       if (data.user) {
-        setUser(data.user);
-
+        setUser(normalizeUser(data.user));
       }
 
-      return data.accessToken;
+      await loadRBAC(newToken);
+
+      return newToken;
     } catch (err) {
       console.error("Silent refresh failed:", err);
 
       accessTokenRef.current = null;
-      setAccessToken(null);
 
+      setAccessToken(null);
       setUser(null);
 
       return null;
     }
-  }, []);
+  }, [loadRBAC]);
 
+  /* =========================================================
+     AUTH FETCH
+  ========================================================= */
   const authFetch = useCallback(
     async (url, options = {}) => {
       const doFetch = (token) =>
         fetch(url, {
           ...options,
           credentials: "include",
+
           headers: {
             ...options.headers,
+
             ...(token
               ? {
                   Authorization: `Bearer ${token}`,
@@ -93,6 +192,9 @@ export const AuthProvider = ({ children }) => {
 
       let res = await doFetch(accessTokenRef.current);
 
+      /*
+        Access token expired
+      */
       if (res.status === 401) {
         const newToken = await tryRefresh();
 
@@ -108,15 +210,26 @@ export const AuthProvider = ({ children }) => {
     [tryRefresh, logout]
   );
 
+  /* =========================================================
+     CONTEXT VALUE
+  ========================================================= */
   const value = useMemo(
     () => ({
       accessToken,
       user,
       isLoading,
+
       login,
       logout,
       tryRefresh,
       authFetch,
+
+      /*
+        Optional:
+        Other components can manually refresh RBAC
+        after role/permission changes.
+      */
+      loadRBAC,
     }),
     [
       accessToken,
@@ -126,6 +239,7 @@ export const AuthProvider = ({ children }) => {
       logout,
       tryRefresh,
       authFetch,
+      loadRBAC,
     ]
   );
 
@@ -136,10 +250,16 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+/* =========================================================
+   USE AUTH
+========================================================= */
 export const useAuth = () => {
   const context = useContext(AuthContext);
+
   if (context === undefined) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error(
+      "useAuth must be used within an AuthProvider"
+    );
   }
 
   return context;

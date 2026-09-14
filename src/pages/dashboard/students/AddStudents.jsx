@@ -727,7 +727,7 @@ export default function RegisterStudentPage() {
   /* =========================================================
      RETAKE
   ========================================================= */
-
+ 
   const retake = async () => {
     if (capturedPhoto?.previewUrl) {
       URL.revokeObjectURL(

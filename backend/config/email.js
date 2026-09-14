@@ -104,9 +104,7 @@ async function sendVerificationEmail(toEmail, token) {
     const info = await transporter.sendMail({
       // Must be a verified sender in your SMTP provider
       from: `"SmartCampus" <${process.env.SMTP_FROM}>`, 
-
       to: toEmail,
-
       subject: "Verify Your SmartCampus Account",
 
       // Plain-text fallback

@@ -7,7 +7,7 @@ export default function ProfileHeader({ profile, onEditClick, onImageChange }) {
     fullName,
     username,
     designation,
-    adminRole,
+    adminRole, 
     accountStatus,
     lastActive,
   } = profile || {};

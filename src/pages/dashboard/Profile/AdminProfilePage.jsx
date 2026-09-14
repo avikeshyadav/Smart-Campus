@@ -62,7 +62,7 @@
     useEffect(() => {
       if (!accessToken) return;
 
-      loadProfile();
+      loadProfile(); 
     }, [accessToken, userId]);
 
     // ==========================================

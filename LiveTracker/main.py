@@ -1,83 +1,87 @@
 import datetime
 import os
 import threading
+
 import hnswlib
-import base64
 import numpy as np
-from fastapi import (Depends,FastAPI,File,Form,HTTPException,UploadFile,)
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func
 from sqlalchemy.orm import Session
+
 import face_utils
 from antispoof_utils import check_liveness
 from notification_service import create_notification
-from database import (Attendance,Student,get_db, get_student_hostel_details)
+from database import Attendance, Student, get_db, get_student_hostel_details
 
-ATTENDANCE_CONFIDENCE_THRESHOLD = 90.0
+
 # =========================================================
 # CONFIG
 # =========================================================
 
 MEDIA_ROOT = "media"
-STUDENT_PHOTOS_DIR = os.path.join(
-    MEDIA_ROOT,
-    "students",
-)
+STUDENT_PHOTOS_DIR = os.path.join(MEDIA_ROOT, "students")
 
 HNSW_DIR = "hnsw_data"
-HNSW_INDEX_FILE = os.path.join(
-    HNSW_DIR,
-    "students_hnsw.bin",
-)
-os.makedirs(
-    STUDENT_PHOTOS_DIR,
-    exist_ok=True,
-)
+HNSW_INDEX_FILE = os.path.join(HNSW_DIR, "students_hnsw.bin")
 
-os.makedirs(
-    HNSW_DIR,
-    exist_ok=True,
-)
+os.makedirs(STUDENT_PHOTOS_DIR, exist_ok=True)
+os.makedirs(HNSW_DIR, exist_ok=True)
 
-FACE_EMBEDDING_DIM = 128
+# InsightFace ArcFace embeddings are 512-dimensional. 
+FACE_EMBEDDING_DIM = 512
+
 HNSW_MAX_ELEMENTS = 100000
 HNSW_M = 32
 HNSW_EF_CONSTRUCTION = 300
 HNSW_EF = 100
 HNSW_TOP_K = 5
-FACE_DISTANCE_THRESHOLD = 0.85
+
+# These are STARTING values, not probabilities.
+# Calibrate them on your own college camera/photos before production.
+FACE_SIMILARITY_THRESHOLD = 0.50
+FACE_SIMILARITY_MARGIN = 0.05
+
+# Attendance is intentionally stricter than normal search.
+ATTENDANCE_SIMILARITY_THRESHOLD = 0.55
+ATTENDANCE_SIMILARITY_MARGIN = 0.06
+
+# Liveness is enabled for attendance.
+ENABLE_ATTENDANCE_LIVENESS = True
+
+
 # =========================================================
 # ANTI-SPOOFING
 # =========================================================
 
 def verify_liveness(image_bytes: bytes):
     try:
-        is_real, label, confidence = check_liveness(
-            image_bytes
-        )
+        is_real, label, confidence = check_liveness(image_bytes)
+
         return {
             "passed": bool(is_real),
-            "label": label,
+            "label": str(label),
             "confidence": float(confidence),
         }
+
     except Exception as error:
-        print(
-            "Anti-spoof error:",
-            error,
-        )
+        print("Anti-spoof error:", error)
+
         return {
             "passed": False,
             "label": "error",
             "confidence": 0.0,
         }
 
+
 # =========================================================
 # APP
 # =========================================================
 
 app = FastAPI(
-    title="Face Register API"
+    title="SmartCampus Face Recognition API",
+    version="2.0.0",
 )
 
 
@@ -91,31 +95,42 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
 # =========================================================
 # MEDIA
 # =========================================================
+
 app.mount(
     "/media",
-    StaticFiles(
-        directory=MEDIA_ROOT
-    ),
+    StaticFiles(directory=MEDIA_ROOT),
     name="media",
 )
+
+
+# =========================================================
+# HNSW STATE
+# =========================================================
+
 hnsw_index = None
-#
+
+# HNSW label -> database Student.id
 hnsw_label_to_student = {}
-# Student database ID -> HNSW label
+
+# database Student.id -> HNSW label
 hnsw_student_to_label = {}
-# Next HNSW label
+
 hnsw_next_label = 0
-# Protect index modifications.
+
+# Protect HNSW modifications/search.
 hnsw_lock = threading.RLock()
+
+
 # =========================================================
 # VECTOR HELPERS
 # =========================================================
-def encoding_to_numpy(
-    encoding,
-):
+
+def encoding_to_numpy(encoding):
     if encoding is None:
         return None
 
@@ -123,36 +138,74 @@ def encoding_to_numpy(
         vector = np.asarray(
             encoding,
             dtype=np.float32,
-        )
+        ).reshape(-1)
+
     except Exception:
         return None
-    vector = vector.reshape(-1)
+
     if vector.size != FACE_EMBEDDING_DIM:
         raise ValueError(
-            f"Invalid face embedding dimension: "
-            f"{vector.size}. "
+            f"Invalid face embedding dimension: {vector.size}. "
             f"Expected {FACE_EMBEDDING_DIM}."
         )
-    return vector
-def normalize_vector(
-    vector,
-):
 
+    if not np.all(np.isfinite(vector)):
+        raise ValueError("Face embedding contains invalid values.")
+
+    return vector
+
+
+def normalize_vector(vector):
     vector = np.asarray(
         vector,
         dtype=np.float32,
-    )
+    ).reshape(-1)
 
-    norm = np.linalg.norm(
-        vector
-    )
+    norm = np.linalg.norm(vector)
 
     if norm <= 0:
-        raise ValueError(
-            "Zero face embedding"
-        )
+        raise ValueError("Zero face embedding")
 
     return vector / norm
+
+
+def cosine_similarity(a, b):
+    a = normalize_vector(a)
+    b = normalize_vector(b)
+
+    return float(np.dot(a, b))
+
+
+def similarity_to_confidence(similarity: float):
+    """
+    UI score only.
+
+    IMPORTANT:
+    This is NOT a statistical probability and should not be
+    presented as "99% certain". It is a normalized display score
+    relative to the configured acceptance threshold.
+    """
+
+    if similarity is None:
+        return 0.0
+
+    similarity = float(similarity)
+
+    # Display scale:
+    # threshold -> 0
+    # 0.75+ -> 100
+    low = FACE_SIMILARITY_THRESHOLD
+    high = 0.75
+
+    if high <= low:
+        return round(max(0.0, min(100.0, similarity * 100.0)), 1)
+
+    score = ((similarity - low) / (high - low)) * 100.0
+
+    return round(
+        max(0.0, min(100.0, score)),
+        1,
+    )
 
 
 # =========================================================
@@ -160,10 +213,6 @@ def normalize_vector(
 # =========================================================
 
 def create_hnsw_index():
-    """
-    Create an empty HNSW index.
-    """
-
     global hnsw_index
 
     index = hnswlib.Index(
@@ -178,9 +227,7 @@ def create_hnsw_index():
         random_seed=42,
     )
 
-    index.set_ef(
-        HNSW_EF
-    )
+    index.set_ef(HNSW_EF)
 
     index.set_num_threads(
         max(
@@ -196,173 +243,104 @@ def create_hnsw_index():
 # ADD VECTOR
 # =========================================================
 
-def add_student_to_hnsw(
-    student_id: int,
-    encoding,
-):
+def add_student_to_hnsw(student_id: int, encoding):
     """
-    Add one student encoding to HNSW.
+    Add one student embedding to HNSW.
+
+    A student is stored only once in this version.
     """
 
     global hnsw_next_label
 
-    vector = encoding_to_numpy(
-        encoding
-    )
+    vector = encoding_to_numpy(encoding)
 
     if vector is None:
-        return
+        return False
 
-    vector = normalize_vector(
-        vector
-    )
+    vector = normalize_vector(vector)
 
     with hnsw_lock:
+        if hnsw_index is None:
+            create_hnsw_index()
 
-        # Already exists
-        if (
-            student_id
-            in hnsw_student_to_label
-        ):
-            label = (
-                hnsw_student_to_label[
-                    student_id
-                ]
-            )
+        # Do not add the same HNSW label twice.
+        if student_id in hnsw_student_to_label:
+            return True
 
-            hnsw_index.add_items(
-                np.asarray(
-                    [vector],
-                    dtype=np.float32,
-                ),
-                np.asarray(
-                    [label],
-                    dtype=np.int64,
-                ),
-            )
-
-            return
+        if hnsw_index.get_current_count() >= hnsw_index.get_max_elements():
+            raise RuntimeError("HNSW index is full.")
 
         label = hnsw_next_label
-
         hnsw_next_label += 1
 
         hnsw_index.add_items(
-            np.asarray(
-                [vector],
-                dtype=np.float32,
-            ),
-            np.asarray(
-                [label],
-                dtype=np.int64,
-            ),
+            np.asarray([vector], dtype=np.float32),
+            np.asarray([label], dtype=np.int64),
         )
 
-        hnsw_label_to_student[
-            label
-        ] = student_id
+        hnsw_label_to_student[label] = student_id
+        hnsw_student_to_label[student_id] = label
 
-        hnsw_student_to_label[
-            student_id
-        ] = label
+    return True
 
 
 # =========================================================
 # BUILD HNSW FROM DATABASE
 # =========================================================
 
-def build_hnsw_from_database(
-    db: Session,
-):
-    """
-    Build complete HNSW index from students table.
-    """
-
+def build_hnsw_from_database(db: Session):
     global hnsw_index
     global hnsw_next_label
 
-    print(
-        "========================================"
-    )
-
-    print(
-        "Building HNSW face index..."
-    )
-
-    print(
-        "========================================"
-    )
+    print("========================================")
+    print("Building HNSW face index...")
+    print("========================================")
 
     students = (
         db.query(Student)
-        .filter(
-            Student.encoding.isnot(None)
-        )
+        .filter(Student.encoding.isnot(None))
         .all()
     )
 
-    print(
-        f"Students with encodings: "
-        f"{len(students)}"
-    )
+    print(f"Students with encodings: {len(students)}")
 
-    # Create fresh index
     create_hnsw_index()
 
     hnsw_label_to_student.clear()
-
     hnsw_student_to_label.clear()
-
     hnsw_next_label = 0
 
     vectors = []
-
     labels = []
-
     valid_students = []
 
     for student in students:
-
         try:
-            vector = encoding_to_numpy(
-                face_utils.json_to_encoding(
-                    student.encoding
-                )
+            known_encoding = face_utils.json_to_encoding(
+                student.encoding
             )
+
+            vector = encoding_to_numpy(known_encoding)
 
             if vector is None:
                 continue
 
-            vector = normalize_vector(
-                vector
-            )
+            vector = normalize_vector(vector)
 
             label = hnsw_next_label
-
             hnsw_next_label += 1
 
-            vectors.append(
-                vector
-            )
-
-            labels.append(
-                label
-            )
-
-            valid_students.append(
-                student
-            )
+            vectors.append(vector)
+            labels.append(label)
+            valid_students.append(student)
 
         except Exception as error:
-
+            # This is expected for old 128-D embeddings after migration.
             print(
-                f"Skipping student "
-                f"{student.id}: "
-                f"{error}"
+                f"Skipping student {student.id}: {error}"
             )
 
     if vectors:
-
         vectors_np = np.asarray(
             vectors,
             dtype=np.float32,
@@ -374,7 +352,6 @@ def build_hnsw_from_database(
         )
 
         with hnsw_lock:
-
             hnsw_index.add_items(
                 vectors_np,
                 labels_np,
@@ -384,34 +361,16 @@ def build_hnsw_from_database(
                 ),
             )
 
-        for (
-            student,
-            label,
-        ) in zip(
+        for student, label in zip(
             valid_students,
             labels,
         ):
+            hnsw_label_to_student[label] = student.id
+            hnsw_student_to_label[student.id] = label
 
-            hnsw_label_to_student[
-                label
-            ] = student.id
-
-            hnsw_student_to_label[
-                student.id
-            ] = label
-
-    print(
-        f"HNSW indexed: "
-        f"{len(valid_students)}"
-    )
-
-    print(
-        "HNSW build completed."
-    )
-
-    print(
-        "========================================"
-    )
+    print(f"HNSW indexed: {len(valid_students)}")
+    print("HNSW build completed.")
+    print("========================================")
 
 
 # =========================================================
@@ -419,23 +378,13 @@ def build_hnsw_from_database(
 # =========================================================
 
 def save_hnsw():
-    """
-    Save HNSW graph to disk.
-    """
-
     if hnsw_index is None:
         return
 
     with hnsw_lock:
+        hnsw_index.save_index(HNSW_INDEX_FILE)
 
-        hnsw_index.save_index(
-            HNSW_INDEX_FILE
-        )
-
-    print(
-        f"HNSW saved: "
-        f"{HNSW_INDEX_FILE}"
-    )
+    print(f"HNSW saved: {HNSW_INDEX_FILE}")
 
 
 # =========================================================
@@ -444,21 +393,19 @@ def save_hnsw():
 
 def load_hnsw_if_possible():
     """
-    Load saved HNSW graph.
+    Kept for compatibility.
 
-    IMPORTANT:
-    Mapping still comes from database.
+    The application currently rebuilds from the database on startup,
+    which is safer because the label -> student mapping is reconstructed
+    at the same time.
     """
 
     global hnsw_index
 
-    if not os.path.exists(
-        HNSW_INDEX_FILE
-    ):
+    if not os.path.exists(HNSW_INDEX_FILE):
         return False
 
     try:
-
         index = hnswlib.Index(
             space="cosine",
             dim=FACE_EMBEDDING_DIM,
@@ -469,9 +416,7 @@ def load_hnsw_if_possible():
             max_elements=HNSW_MAX_ELEMENTS,
         )
 
-        index.set_ef(
-            HNSW_EF
-        )
+        index.set_ef(HNSW_EF)
 
         index.set_num_threads(
             max(
@@ -481,18 +426,11 @@ def load_hnsw_if_possible():
         )
 
         hnsw_index = index
-
         return True
 
     except Exception as error:
-
-        print(
-            "HNSW load failed:",
-            error,
-        )
-
+        print("HNSW load failed:", error)
         hnsw_index = None
-
         return False
 
 
@@ -500,17 +438,8 @@ def load_hnsw_if_possible():
 # REBUILD HNSW
 # =========================================================
 
-def rebuild_hnsw(
-    db: Session,
-):
-    """
-    Completely rebuild index.
-    """
-
-    build_hnsw_from_database(
-        db
-    )
-
+def rebuild_hnsw(db: Session):
+    build_hnsw_from_database(db)
     save_hnsw()
 
 
@@ -518,10 +447,7 @@ def rebuild_hnsw(
 # SEARCH HNSW
 # =========================================================
 
-def hnsw_search(
-    query_encoding,
-    k=HNSW_TOP_K,
-):
+def hnsw_search(query_encoding, k=HNSW_TOP_K):
     """
     ANN search.
 
@@ -532,39 +458,24 @@ def hnsw_search(
     if hnsw_index is None:
         return []
 
-    vector = encoding_to_numpy(
-        query_encoding
-    )
+    vector = encoding_to_numpy(query_encoding)
 
     if vector is None:
         return []
 
-    vector = normalize_vector(
-        vector
-    )
+    vector = normalize_vector(vector)
 
     with hnsw_lock:
-
-        count = (
-            hnsw_index.get_current_count()
-        )
+        count = hnsw_index.get_current_count()
 
         if count <= 0:
             return []
 
-        k = min(
-            k,
-            count,
-        )
+        k = min(int(k), count)
 
-        labels, distances = (
-            hnsw_index.knn_query(
-                np.asarray(
-                    [vector],
-                    dtype=np.float32,
-                ),
-                k=k,
-            )
+        labels, distances = hnsw_index.knn_query(
+            np.asarray([vector], dtype=np.float32),
+            k=k,
         )
 
     results = []
@@ -573,14 +484,9 @@ def hnsw_search(
         labels[0],
         distances[0],
     ):
-
         label = int(label)
 
-        student_id = (
-            hnsw_label_to_student.get(
-                label
-            )
-        )
+        student_id = hnsw_label_to_student.get(label)
 
         if student_id is None:
             continue
@@ -603,173 +509,128 @@ def exact_verify_candidates(
     query_encoding,
     candidate_ids,
     db: Session,
+    threshold=FACE_SIMILARITY_THRESHOLD,
+    margin_threshold=FACE_SIMILARITY_MARGIN,
 ):
     """
-    HNSW gives candidates.
+    HNSW only finds candidates.
 
-    This function does exact face-distance
-    verification on those candidates.
+    Final identity decision is made using exact cosine similarity
+    against the stored ArcFace embedding.
 
-    This gives better accuracy than blindly
-    trusting ANN result.
+    Two checks are used:
+      1. best similarity must be >= threshold
+      2. best similarity must beat second-best by the margin
+
+    Returns:
+        (student, best_similarity, margin)
     """
 
-    query = encoding_to_numpy(
-        query_encoding
-    )
+    query = encoding_to_numpy(query_encoding)
 
     if query is None:
-        return None, None
+        return None, None, None
 
-    query = normalize_vector(
-        query
-    )
+    query = normalize_vector(query)
+
+    candidate_ids = list(dict.fromkeys(candidate_ids))
+
+    if not candidate_ids:
+        return None, None, None
 
     students = (
         db.query(Student)
         .filter(
-            Student.id.in_(
-                candidate_ids
-            ),
+            Student.id.in_(candidate_ids),
             Student.encoding.isnot(None),
         )
         .all()
     )
 
-    best_student = None
-    best_distance = float(
-        "inf"
-    )
+    scored = []
 
     for student in students:
-
         try:
-
-            known = (
-                face_utils.json_to_encoding(
-                    student.encoding
-                )
+            known = face_utils.json_to_encoding(
+                student.encoding
             )
 
-            known = encoding_to_numpy(
-                known
-            )
+            known = encoding_to_numpy(known)
 
             if known is None:
                 continue
 
-            known = normalize_vector(
-                known
+            known = normalize_vector(known)
+
+            similarity = cosine_similarity(
+                query,
+                known,
             )
 
-            # -------------------------------------------------
-            # COSINE DISTANCE
-            # -------------------------------------------------
-
-            distance = float(
-                1.0 -
-                np.dot(
-                    query,
-                    known,
+            scored.append(
+                (
+                    similarity,
+                    student,
                 )
             )
-
-            if (
-                distance
-                < best_distance
-            ):
-
-                best_distance = (
-                    distance
-                )
-
-                best_student = (
-                    student
-                )
 
         except Exception as error:
-
             print(
                 "Exact verification error:",
                 error,
             )
 
-    if (
-        best_student is None
-    ):
-        return None, None
+    if not scored:
+        return None, None, None
 
-    if (
-        best_distance
-        > FACE_DISTANCE_THRESHOLD
-    ):
-        return None, best_distance
+    scored.sort(
+        key=lambda item: item[0],
+        reverse=True,
+    )
+
+    best_similarity, best_student = scored[0]
+
+    second_similarity = (
+        scored[1][0]
+        if len(scored) > 1
+        else -1.0
+    )
+
+    margin = (
+        best_similarity - second_similarity
+        if len(scored) > 1
+        else best_similarity
+    )
+
+    if best_similarity < threshold:
+        return None, best_similarity, margin
+
+    if len(scored) > 1 and margin < margin_threshold:
+        return None, best_similarity, margin
 
     return (
         best_student,
-        best_distance,
+        best_similarity,
+        margin,
     )
 
 
-# =========================================================
-# CONFIDENCE
-# =========================================================
-
-def face_distance_to_confidence(
-    distance: float,
-):
-
-    if distance is None:
-        return 0.0
-
-    # Threshold based display.
-    #
-    # distance 0.00 -> 100
-    # distance threshold -> 0
-    #
-    confidence = (
-        1.0
-        -
-        (
-            distance
-            /
-            FACE_DISTANCE_THRESHOLD
-        )
-    ) * 100.0
-    return round(
-        max(
-            0.0,
-            min(
-                100.0,
-                confidence,
-            ),
-        ),
-        1,
-    )
 # =========================================================
 # STARTUP
 # =========================================================
 
-@app.on_event(
-    "startup"
-)
+@app.on_event("startup")
 def startup_event():
-    print(
-        "Starting Face Register API..."
-    )
+    print("Starting SmartCampus Face Recognition API...")
 
-    # Database session
-    db = next(
-        get_db()
-    )
+    db = next(get_db())
 
     try:
-        rebuild_hnsw(
-            db
-        )
+        # Always rebuild because the mapping between HNSW labels and
+        # database IDs must exactly match the current database.
+        rebuild_hnsw(db)
 
     finally:
-
         db.close()
 
 
@@ -777,9 +638,7 @@ def startup_event():
 # ENROLL STUDENT
 # =========================================================
 
-@app.post(
-    "/api/students/enroll"
-)
+@app.post("/api/students/enroll")
 async def enroll_student(
     student_id: str = Form(...),
     name: str = Form(...),
@@ -787,22 +646,17 @@ async def enroll_student(
     photo: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-
     # -------------------------------------------------------
     # CHECK DUPLICATE
     # -------------------------------------------------------
 
     existing = (
         db.query(Student)
-        .filter(
-            Student.student_id
-            == student_id
-        )
+        .filter(Student.student_id == student_id)
         .first()
     )
 
     if existing:
-
         raise HTTPException(
             status_code=400,
             detail="Student ID already enrolled",
@@ -812,46 +666,48 @@ async def enroll_student(
     # READ PHOTO
     # -------------------------------------------------------
 
-    image_bytes = (
-        await photo.read()
-    )
+    image_bytes = await photo.read()
 
     if not image_bytes:
-
         raise HTTPException(
             status_code=422,
             detail="Empty image",
         )
 
     # -------------------------------------------------------
-    # EXTRACT FACE
+    # EXTRACT FACE + QUALITY CHECK
     # -------------------------------------------------------
 
-    encoding, _ = (
-        face_utils.extract_encoding(
-            image_bytes
+    try:
+        encoding, face_location = face_utils.extract_encoding(
+            image_bytes,
+            require_quality=True,
         )
-    )
 
-    if encoding is None:
-
+    except ValueError as error:
         raise HTTPException(
             status_code=422,
-            detail=(
-                "No face detected "
-                "in enrollment photo"
-            ),
-        )
-
-    # Validate dimension
-    try:
-
-        encoding_to_numpy(
-            encoding
+            detail=str(error),
         )
 
     except Exception as error:
+        print("Face extraction error:", error)
+        raise HTTPException(
+            status_code=422,
+            detail="Unable to process enrollment image",
+        )
 
+    if encoding is None:
+        raise HTTPException(
+            status_code=422,
+            detail="No usable face detected in enrollment photo",
+        )
+
+    # Validate dimension.
+    try:
+        encoding_to_numpy(encoding)
+
+    except Exception as error:
         raise HTTPException(
             status_code=422,
             detail=str(error),
@@ -866,14 +722,9 @@ async def enroll_student(
         f"{student_id}.jpg",
     )
 
-    with open(photo_path,"wb",) as file:
+    with open(photo_path, "wb") as file:
         file.write(image_bytes)
-    content_type = photo.content_type or "image/jpeg"
 
-#     avatar_base64 = (
-#         f"data:{content_type};base64,"
-#         f"{base64.b64encode(image_bytes).decode('utf-8')}"
-# )
     # -------------------------------------------------------
     # CREATE STUDENT
     # -------------------------------------------------------
@@ -883,34 +734,26 @@ async def enroll_student(
         name=name,
         course=course,
         photo_path=photo_path,
-        # avatar_url=avatar_base64,
-        encoding=(
-            face_utils.encoding_to_json(
-                encoding
-            )
-        ),
+        encoding=face_utils.encoding_to_json(encoding),
     )
 
-    db.add(
-        student
-    )
-
+    db.add(student)
     db.commit()
+    db.refresh(student)
 
-    db.refresh(
-        student
-    )
+    # -------------------------------------------------------
+    # NOTIFICATION
+    # -------------------------------------------------------
+
     try:
-
         create_notification(
             db=db,
             user_id=9,
             notification_type="STUDENT_CREATED",
             title="New Student Enrolled",
             message=(
-                f"{student.name} "
-                f" From {student.course} "
-                f"has been successfully enrolled."
+                f"{student.name} From {student.course} "
+                "has been successfully enrolled."
             ),
             entity_type="student",
             entity_id=student.id,
@@ -922,19 +765,14 @@ async def enroll_student(
         )
 
     except Exception as error:
-
-        print(
-            "Student notification failed:",
-            error,
-        )
+        print("Student notification failed:", error)
 
     # -------------------------------------------------------
     # ADD TO HNSW
     # -------------------------------------------------------
 
     try:
-
-        add_student_to_hnsw(
+        indexed = add_student_to_hnsw(
             student.id,
             encoding,
         )
@@ -942,27 +780,29 @@ async def enroll_student(
         save_hnsw()
 
     except Exception as error:
+        indexed = False
+        print("HNSW add failed:", error)
 
-        print(
-            "HNSW add failed:",
-            error,
-        )
     # -------------------------------------------------------
     # RESPONSE
     # -------------------------------------------------------
 
     return {
         "message": "Student enrolled",
-        "student_id": (
-            student.student_id
+        "student_id": student.student_id,
+        "database_id": student.id,
+        "hnsw_indexed": bool(indexed),
+        "embedding_dimension": FACE_EMBEDDING_DIM,
+        "model": getattr(
+            face_utils,
+            "MODEL_NAME",
+            "InsightFace",
         ),
-        "database_id": (
-            student.id
-        ),
-        "hnsw_indexed": (
-            student.id
-            in hnsw_student_to_label
-        ),
+        "face_quality": getattr(
+            face_utils,
+            "get_last_quality_info",
+            lambda: None,
+        )(),
     }
 
 
@@ -970,33 +810,46 @@ async def enroll_student(
 # SEARCH STUDENT BY FACE
 # =========================================================
 
-@app.post(
-    "/api/students/search"
-)
+@app.post("/api/students/search")
 async def search_face(
     frame: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    image_bytes = await frame.read()
 
-    image_bytes = (
-        await frame.read()
-    )
-    # -------------------------------------------------------
-    # FACE ENCODING
-    # -------------------------------------------------------
-    encoding, _ = (
-        face_utils.extract_encoding(
-            image_bytes
-        )
-    )
-    if encoding is None:
-
+    if not image_bytes:
         raise HTTPException(
             status_code=422,
-            detail=(
-                "No face detected "
-                "in submitted frame"
-            ),
+            detail="Empty image",
+        )
+
+    # -------------------------------------------------------
+    # FACE ENCODING + QUALITY
+    # -------------------------------------------------------
+
+    try:
+        encoding, _ = face_utils.extract_encoding(
+            image_bytes,
+            require_quality=True,
+        )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        )
+
+    except Exception as error:
+        print("Face extraction error:", error)
+        raise HTTPException(
+            status_code=422,
+            detail="Unable to process submitted frame",
+        )
+
+    if encoding is None:
+        raise HTTPException(
+            status_code=422,
+            detail="No usable face detected in submitted frame",
         )
 
     # -------------------------------------------------------
@@ -1009,71 +862,87 @@ async def search_face(
     )
 
     if not candidates:
-
         raise HTTPException(
             status_code=404,
-            detail=(
-                "No matching student found"
-            ),
+            detail="No matching student found",
         )
 
     candidate_ids = [
         student_id
-        for (
-            student_id,
-            _distance,
-        ) in candidates
-    ] 
+        for student_id, _distance in candidates
+    ]
 
     # -------------------------------------------------------
     # EXACT VERIFICATION
     # -------------------------------------------------------
 
-    match, distance = (
-        exact_verify_candidates(
-            encoding,
-            candidate_ids,
-            db,
-        )
+    match, similarity, margin = exact_verify_candidates(
+        encoding,
+        candidate_ids,
+        db,
+        threshold=FACE_SIMILARITY_THRESHOLD,
+        margin_threshold=FACE_SIMILARITY_MARGIN,
     )
 
     if match is None:
-
         raise HTTPException(
             status_code=404,
-            detail=(
-                "No matching student found"
-            ),
+            detail={
+                "message": "No matching student found",
+                "similarity": (
+                    round(float(similarity), 4)
+                    if similarity is not None
+                    else None
+                ),
+                "margin": (
+                    round(float(margin), 4)
+                    if margin is not None
+                    else None
+                ),
+                "required_similarity": FACE_SIMILARITY_THRESHOLD,
+                "required_margin": FACE_SIMILARITY_MARGIN,
+            },
         )
 
-    confidence = (face_distance_to_confidence(distance))
-    hostel = get_student_hostel_details(db,match.id,)
-    print(hostel)
-    # -------------------------------------------------------
-    # RESPONSE
-    # -------------------------------------------------------
+    confidence = similarity_to_confidence(
+        similarity
+    )
+
+    hostel = get_student_hostel_details(
+        db,
+        match.id,
+    )
 
     return {
-        "student_id":match.student_id,
-        "name":match.name,
-        "class":match.course,
-        "status":match.status,
+        "student_id": match.student_id,
+        "name": match.name,
+        "class": match.course,
+        "status": match.status,
+
+        # UI score, not probability.
         "confidence": confidence,
         "accuracy": f"{confidence}%",
-        "liveness": "real",
-        # "liveness_confidence":
-        #     liveness["confidence"],
+
+        # Real biometric metrics.
+        "similarity": round(float(similarity), 4),
+        "margin": round(float(margin), 4),
+
+        "liveness": "not_checked",
+
         "hostel": hostel,
-        "distance":
-            round(
-                float(distance),
-                4,
-            ),
-        "image":
-            (
-                f"/media/students/"
-                f"{os.path.basename(match.photo_path)}"
-            ),
+
+        # Keep "distance" for frontend compatibility.
+        "distance": round(
+            float(1.0 - similarity),
+            4,
+        ),
+
+        "image": (
+            f"/media/students/"
+            f"{os.path.basename(match.photo_path)}"
+            if match.photo_path
+            else None
+        ),
     }
 
 
@@ -1081,49 +950,66 @@ async def search_face(
 # MARK ATTENDANCE
 # =========================================================
 
-@app.post(
-    "/api/students/attendance"
-)
+@app.post("/api/students/attendance")
 async def mark_attendance(
     frame: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
+    image_bytes = await frame.read()
 
-    image_bytes = (
-        await frame.read()
-    )
+    if not image_bytes:
+        raise HTTPException(
+            status_code=422,
+            detail="Empty image",
+        )
+
     # -------------------------------------------------------
     # ANTI-SPOOFING
     # -------------------------------------------------------
 
-    # liveness = verify_liveness(
-    #     image_bytes
-    # )
+    liveness = None
 
-    # if not liveness["passed"]:
+    # if ENABLE_ATTENDANCE_LIVENESS:
+    #     liveness = verify_liveness(image_bytes)
 
-    #     raise HTTPException(
-    #         status_code=403, 
-    #         detail={
-    #             "message": "Spoof detected. Live face required.",
-    #             "liveness": liveness["label"],
-    #             "confidence": liveness["confidence"],
-    #         },
-    #     )
+    #     if not liveness["passed"]:
+    #         raise HTTPException(
+    #             status_code=403,
+    #             detail={
+    #                 "message": "Live face required.",
+    #                 "liveness": liveness["label"],
+    #                 "liveness_confidence": liveness["confidence"],
+    #             },
+                
+    #         )
 
     # -------------------------------------------------------
-    # EXTRACT FACE
+    # FACE EXTRACTION + QUALITY
     # -------------------------------------------------------
 
-    encoding, _ = (
-        face_utils.extract_encoding(
-            image_bytes
+    try:
+        encoding, _ = face_utils.extract_encoding(
+            image_bytes,
+            require_quality=True,
         )
-    )
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=422,
+            detail=str(error),
+        )
+
+    except Exception as error:
+        print("Face extraction error:", error)
+        raise HTTPException(
+            status_code=422,
+            detail="Unable to process attendance frame",
+        )
+
     if encoding is None:
         raise HTTPException(
             status_code=422,
-            detail="No face detected",
+            detail="No usable face detected",
         )
 
     # -------------------------------------------------------
@@ -1134,75 +1020,80 @@ async def mark_attendance(
         encoding,
         k=HNSW_TOP_K,
     )
+
     if not candidates:
         raise HTTPException(
             status_code=404,
             detail={
-                "message":"No matching student found"
+                "message": "No matching student found"
             },
         )
+
     candidate_ids = [
         student_id
-        for (
-            student_id,
-            _distance,
-        ) in candidates
+        for student_id, _distance in candidates
     ]
+
     # -------------------------------------------------------
     # EXACT VERIFICATION
     # -------------------------------------------------------
 
-    match, distance = (
-        exact_verify_candidates(
-            encoding,
-            candidate_ids,
-            db,
-        )
+    match, similarity, margin = exact_verify_candidates(
+        encoding,
+        candidate_ids,
+        db,
+        threshold=ATTENDANCE_SIMILARITY_THRESHOLD,
+        margin_threshold=ATTENDANCE_SIMILARITY_MARGIN,
     )
-    if match is None:
 
+    if match is None:
         raise HTTPException(
             status_code=404,
             detail={
-               "message":"No matching student found"
+                "message": "Face verification failed",
+                "similarity": (
+                    round(float(similarity), 4)
+                    if similarity is not None
+                    else None
+                ),
+                "margin": (
+                    round(float(margin), 4)
+                    if margin is not None
+                    else None
+                ),
+                "required_similarity":
+                    ATTENDANCE_SIMILARITY_THRESHOLD,
+                "required_margin":
+                    ATTENDANCE_SIMILARITY_MARGIN,
             },
         )
+
+    # -------------------------------------------------------
+    # STUDENT STATUS
+    # -------------------------------------------------------
+
     if str(match.status).strip().lower() != "active":
         raise HTTPException(
             status_code=403,
             detail={
-                "message": "Please inactive the student",
-                "student_id": match.student_id,
-                "name": match.name,
-                "status": match.status,
-            },
-    )
-
-# ----------
-    # -------------------------------------------------------
-    # CONFIDENCE
-    # -------------------------------------------------------
-    confidence = (
-        face_distance_to_confidence(
-            distance
-        )
-    )
-    if confidence < ATTENDANCE_CONFIDENCE_THRESHOLD:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "message": "Face match confidence is below 80%. Attendance not marked.",
-                "confidence": confidence,
-                "required_confidence": ATTENDANCE_CONFIDENCE_THRESHOLD,
+                "message": f"Mr {match.name}, please Activate your Profile."
             },
         )
 
-    today = (
-        datetime.date.today()
+
+    # -------------------------------------------------------
+    # UI SCORE
+    # -------------------------------------------------------
+
+    confidence = similarity_to_confidence(
+        similarity
     )
+
     # -------------------------------------------------------
     # TODAY ATTENDANCE
     # -------------------------------------------------------
+
+    today = datetime.date.today()
 
     existing = (
         db.query(Attendance)
@@ -1218,7 +1109,7 @@ async def mark_attendance(
     # -------------------------------------------------------
 
     if existing:
-        status = ("Already Present")
+        status = "Already Present"
         attendance = existing
 
     # -------------------------------------------------------
@@ -1226,7 +1117,6 @@ async def mark_attendance(
     # -------------------------------------------------------
 
     else:
-
         attendance = Attendance(
             student_id=match.id,
             date=today,
@@ -1236,130 +1126,108 @@ async def mark_attendance(
         db.add(attendance)
         db.commit()
         db.refresh(attendance)
-        status = ("Present")
+
+        status = "Present"
 
     # -------------------------------------------------------
     # ATTENDANCE %
     # -------------------------------------------------------
 
-    attendance_pct = (
-        _attendance_percentage(
-            db,
-            match,
-        )
-    )
+    attendance_pct = _attendance_percentage(
+        db,
+        match,
+    ) 
 
     # -------------------------------------------------------
     # RESPONSE
     # -------------------------------------------------------
 
     return {
+        "id": match.student_id,
+        "student_id": match.student_id,
+        "name": match.name,
+        "class": match.course,
 
-            "id":
-                match.student_id,
+        "status": status,
 
-            "student_id":
-                match.student_id,
+        # UI score only.
+        "confidence": confidence,
+        "accuracy": f"{confidence}%",
 
-            "name":
-                match.name,
+        # Actual verification metrics.
+        "similarity": round(float(similarity), 4),
+        "margin": round(float(margin), 4),
 
-            "class":
-                match.course,
+        "distance": round(
+            float(1.0 - similarity),
+            4,
+        ),
 
-            "status":
-                status,
+        "liveness": (
+            liveness["label"]
+            if liveness
+            else "not_checked"
+        ),
 
-            "confidence":
-                confidence,
+        "liveness_confidence": (
+            liveness["confidence"]
+            if liveness
+            else None
+        ),
 
-            "accuracy":
-                f"{confidence}%",
+        "attendance": f"{attendance_pct}%",
 
-            "distance":
-                round(
-                    float(distance),
-                    4,
-                ),
+        "time": (
+            attendance.marked_at.isoformat()
+            if attendance.marked_at
+            else None
+        ),
 
-            # Anti-spoof information
-            "liveness":
-                "real",
+        "date": (
+            attendance.date.isoformat()
+            if attendance.date
+            else None
+        ),
 
-            # "liveness_confidence":
-            #     liveness["confidence"],
+        "image": (
+            f"/media/students/"
+            f"{os.path.basename(match.photo_path)}"
+            if match.photo_path
+            else None
+        ),
+    }
 
-            "attendance":
-                f"{attendance_pct}%",
-
-            "time":
-                (
-                    attendance.marked_at.isoformat()
-                    if attendance.marked_at
-                    else None
-                ),
-
-            "date":
-                (
-                    attendance.date.isoformat()
-                    if attendance.date
-                    else None
-                ),
-
-            "image":
-                (
-                    f"/media/students/"
-                    f"{os.path.basename(match.photo_path)}"
-                    if match.photo_path
-                    else None
-                ),
-        }
 
 # =========================================================
 # ALL STUDENTS
 # =========================================================
 
-@app.get(
-    "/api/students"
-)
+@app.get("/api/students")
 def list_students(
     db: Session = Depends(get_db),
 ):
-
-    students = (
-        db.query(Student)
-        .all()
-    )
+    students = db.query(Student).all()
 
     result = []
 
     for student in students:
-
         if not student.encoding:
             continue
 
-        result.append({
-
-            "id":
-                student.student_id,
-
-            "name":
-                student.name,
-
-            "class":
-                student.course,
-
-            "status":
-                student.status,
-
-            "image":
-                (
+        result.append(
+            {
+                "id": student.student_id,
+                "name": student.name,
+                "class": student.course,
+                "status": student.status,
+                "image": (
                     f"/media/students/"
                     f"{os.path.basename(student.photo_path)}"
-                )
-                if student.photo_path
-                else None,
-        })
+                    if student.photo_path
+                    else None
+                ),
+            }
+        )
 
     return result
 
@@ -1373,29 +1241,19 @@ def _mark_attendance_once_today(
     student_id: int,
     confidence: float,
 ):
-
-    today = (
-        datetime.date.today()
-    )
+    today = datetime.date.today()
 
     already_marked = (
         db.query(Attendance)
         .filter(
-            Attendance.student_id
-            == student_id,
-
-            Attendance.date
-            == today,
+            Attendance.student_id == student_id,
+            Attendance.date == today,
         )
         .first()
     )
 
     if already_marked:
-
-        return (
-            already_marked,
-            True,
-        )
+        return already_marked, True
 
     attendance = Attendance(
         student_id=student_id,
@@ -1403,20 +1261,11 @@ def _mark_attendance_once_today(
         confidence=confidence,
     )
 
-    db.add(
-        attendance
-    )
-
+    db.add(attendance)
     db.commit()
+    db.refresh(attendance)
 
-    db.refresh(
-        attendance
-    )
-
-    return (
-        attendance,
-        False,
-    )
+    return attendance, False
 
 
 # =========================================================
@@ -1427,20 +1276,14 @@ def _attendance_percentage(
     db: Session,
     student: Student,
 ) -> float:
-
-    today = (
-        datetime.date.today()
-    )
+    today = datetime.date.today()
 
     if not student.created_at:
-
         total_days = 1
 
     else:
-
         total_days = (
-            today
-            - student.created_at.date()
+            today - student.created_at.date()
         ).days + 1
 
         total_days = max(
@@ -1457,8 +1300,7 @@ def _attendance_percentage(
             )
         )
         .filter(
-            Attendance.student_id
-            == student.id
+            Attendance.student_id == student.id
         )
         .scalar()
     ) or 0
@@ -1467,11 +1309,8 @@ def _attendance_percentage(
         min(
             (
                 present_days
-                /
-                total_days
-            )
-            * 100,
-
+                / total_days
+            ) * 100,
             100,
         ),
         1,
@@ -1482,17 +1321,11 @@ def _attendance_percentage(
 # TODAY ATTENDANCE
 # =========================================================
 
-@app.get(
-    "/api/attendance/today"
-)
+@app.get("/api/attendance/today")
 def get_today_attendance(
     db: Session = Depends(get_db),
 ):
-
-    today = (
-        datetime.date.today()
-    )
-
+    today = datetime.date.today()
     records = (
         db.query(
             Attendance,
@@ -1500,12 +1333,10 @@ def get_today_attendance(
         )
         .join(
             Student,
-            Attendance.student_id
-            == Student.id,
+            Attendance.student_id == Student.id,
         )
         .filter(
-            Attendance.date
-            == today
+            Attendance.date == today
         )
         .order_by(
             Attendance.marked_at.desc(),
@@ -1516,92 +1347,67 @@ def get_today_attendance(
 
     result = []
 
-    for (
-        attendance,
-        student,
-    ) in records:
-
-        attendance_percentage = (
-            _attendance_percentage(
-                db,
-                student,
-            )
+    for attendance, student in records:
+        attendance_percentage = _attendance_percentage(
+            db,
+            student,
         )
 
         confidence = (
             round(
-                float(
-                    attendance.confidence
-                ),
+                float(attendance.confidence),
                 1,
             )
-            if attendance.confidence
-            is not None
+            if attendance.confidence is not None
             else None
         )
 
-        result.append({
+        result.append(
+            {
+                "id": attendance.id,
+                "student_id": student.student_id,
+                "name": student.name,
+                "class": student.course,
+                "status": "Present",
 
-            "id":
-                attendance.id,
-
-            "student_id":
-                student.student_id,
-
-            "name":
-                student.name,
-
-            "class":
-                student.course,
-
-            "status":
-                "Present",
-
-            "date":
-                (
+                "date": (
                     attendance.date.isoformat()
                     if attendance.date
                     else None
                 ),
 
-            "time":
-                (
+                "time": (
                     attendance.marked_at.isoformat()
                     if attendance.marked_at
                     else None
                 ),
 
-            "marked_at":
-                (
+                "marked_at": (
                     attendance.marked_at.isoformat()
                     if attendance.marked_at
                     else None
                 ),
 
-            "confidence":
-                confidence,
+                "confidence": confidence,
 
-            "accuracy":
-                (
+                "accuracy": (
                     f"{confidence}%"
-                    if confidence
-                    is not None
+                    if confidence is not None
                     else None
                 ),
 
-            "attendance":
-                (
+                "attendance": (
                     f"{attendance_percentage}%"
                 ),
 
-            "image":
-                (
+                "image": (
                     f"/media/students/"
                     f"{os.path.basename(student.photo_path)}"
-                )
-                if student.photo_path
-                else None,
-        })
+                    if student.photo_path
+                    else None
+                ),
+            }
+        )
 
     return result
 
@@ -1610,51 +1416,47 @@ def get_today_attendance(
 # HNSW STATUS
 # =========================================================
 
-@app.get(
-    "/api/hnsw/status"
-)
+@app.get("/api/hnsw/status")
 def hnsw_status():
-
     if hnsw_index is None:
-
         return {
             "ready": False,
             "count": 0,
-            "max_elements":
-                HNSW_MAX_ELEMENTS,
+            "max_elements": HNSW_MAX_ELEMENTS,
+            "dimension": FACE_EMBEDDING_DIM,
+            "space": "cosine",
         }
 
     return {
+        "ready": True,
+        "count": hnsw_index.get_current_count(),
+        "max_elements": hnsw_index.get_max_elements(),
 
-        "ready":
-            True,
+        "dimension": FACE_EMBEDDING_DIM,
+        "space": "cosine",
 
-        "count":
-            hnsw_index.get_current_count(),
+        "M": HNSW_M,
+        "ef_construction": HNSW_EF_CONSTRUCTION,
+        "ef": HNSW_EF,
+        "top_k": HNSW_TOP_K,
 
-        "max_elements":
-            hnsw_index.get_max_elements(),
+        "search_similarity_threshold":
+            FACE_SIMILARITY_THRESHOLD,
 
-        "dimension":
-            FACE_EMBEDDING_DIM,
+        "search_similarity_margin":
+            FACE_SIMILARITY_MARGIN,
 
-        "space":
-            "cosine",
+        "attendance_similarity_threshold":
+            ATTENDANCE_SIMILARITY_THRESHOLD,
 
-        "M":
-            HNSW_M,
+        "attendance_similarity_margin":
+            ATTENDANCE_SIMILARITY_MARGIN,
 
-        "ef_construction":
-            HNSW_EF_CONSTRUCTION,
-
-        "ef":
-            HNSW_EF,
-
-        "top_k":
-            HNSW_TOP_K,
-
-        "distance_threshold":
-            FACE_DISTANCE_THRESHOLD,
+        "model": getattr(
+            face_utils,
+            "MODEL_NAME",
+            "InsightFace",
+        ),
     }
 
 
@@ -1662,32 +1464,29 @@ def hnsw_status():
 # MANUAL REBUILD
 # =========================================================
 
-@app.post(
-    "/api/hnsw/rebuild"
-)
+@app.post("/api/hnsw/rebuild")
 def manual_rebuild(
     db: Session = Depends(get_db),
 ):
-
     try:
-
-        rebuild_hnsw(
-            db
-        )
+        rebuild_hnsw(db)
 
         return {
-
-            "message":
-                "HNSW rebuilt successfully",
-
-            "count":
+            "message": "HNSW rebuilt successfully",
+            "count": (
                 hnsw_index.get_current_count()
-                if hnsw_index   
-                else 0,
+                if hnsw_index
+                else 0
+            ),
+            "dimension": FACE_EMBEDDING_DIM,
+            "model": getattr(
+                face_utils,
+                "MODEL_NAME",
+                "InsightFace",
+            ),
         }
 
     except Exception as error:
-
         raise HTTPException(
             status_code=500,
             detail=str(error),

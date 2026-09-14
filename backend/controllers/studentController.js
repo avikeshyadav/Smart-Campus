@@ -311,7 +311,6 @@ async function viewStudents(req, res) {
 // =====================================================
 async function getStudentById(req, res) {
   const { id } = req.params;
-
   if (!isValidId(id)) {
     return res.status(400).json({
       success: false,
@@ -324,17 +323,24 @@ async function getStudentById(req, res) {
       id,
       name,
       student_id,
-      class_name,
       email,
       mobile,
+      parents,
+      course,
+      department,
+      semester,
+      year,
+      dob,
+      gender,
       photo_path,
+      address,
       status
     FROM students
-    WHERE id = ?
+    WHERE id = ? OR student_id = ?
     LIMIT 1
   `;
 
-  db.query(sql, [id], (err, result) => {
+  db.query(sql, [id,id], (err, result) => {
     if (err) {
       console.error("Get single student error:", err);
 
@@ -1154,6 +1160,7 @@ async function deleteStudent(req, res) {
     }
   );
 }
+
 
 // =====================================================
 // EXPORT
